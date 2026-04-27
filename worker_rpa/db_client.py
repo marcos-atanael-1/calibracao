@@ -11,6 +11,20 @@ logger = logging.getLogger("worker.db")
 class DatabaseClient:
     """Small SQL client dedicated to the RPA worker."""
 
+    QUEUE_STATUS = {
+        "pending": "PENDING",
+        "processing": "PROCESSING",
+        "done": "DONE",
+        "error": "ERROR",
+    }
+
+    CERTIFICATE_STATUS = {
+        "pending": "QUEUED",
+        "processing": "PROCESSING",
+        "done": "DONE",
+        "error": "ERROR",
+    }
+
     def __init__(self):
         if not DATABASE_URL:
             raise ValueError("DATABASE_URL não configurada para o worker")
@@ -33,13 +47,13 @@ class DatabaseClient:
             WITH next_item AS (
                 SELECT id
                 FROM processing_queue
-                WHERE status = 'pending'
+                WHERE status = :pending_status
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
             UPDATE processing_queue AS pq
-            SET status = 'processing',
+            SET status = :processing_status,
                 started_at = NOW(),
                 worker_id = :worker_id,
                 error_message = NULL
@@ -59,7 +73,14 @@ class DatabaseClient:
             """
         )
         with self._connection() as conn:
-            row = conn.execute(stmt, {"worker_id": WORKER_ID}).mappings().first()
+            row = conn.execute(
+                stmt,
+                {
+                    "worker_id": WORKER_ID,
+                    "pending_status": self.QUEUE_STATUS["pending"],
+                    "processing_status": self.QUEUE_STATUS["processing"],
+                },
+            ).mappings().first()
             return dict(row) if row else None
 
     def get_certificate(self, certificate_id):
@@ -206,20 +227,15 @@ class DatabaseClient:
             WHERE id = :certificate_id
             """
         )
-
-        certificate_status = {
-            "done": "done",
-            "error": "error",
-            "processing": "processing",
-            "pending": "queued",
-        }.get(status, status)
+        queue_status = self.QUEUE_STATUS.get(status, status)
+        certificate_status = self.CERTIFICATE_STATUS.get(status, status)
 
         with self._connection() as conn:
             row = conn.execute(
                 queue_stmt,
                 {
                     "queue_id": queue_id,
-                    "status": status,
+                    "status": queue_status,
                     "worker_id": worker_id,
                     "error_message": error_message,
                 },
