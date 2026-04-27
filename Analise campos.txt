@@ -1,0 +1,179 @@
+Vou separar em:
+
+Campos do formulário
+Campos que são lista (select)
+Campos dinâmicos (pontos de calibração)
+Observações importantes pra POC
+🧾 1. Campos do Formulário (POC)
+🔹 Seção: Dados do Certificado
+Empresa
+Tipo da Calibração
+Nº do Certificado
+Nº do Orçamento
+Contratante
+Endereço
+Interessado
+Endereço (Interessado)
+🔹 Seção: Instrumento
+Instrumento
+Fabricante
+Modelo
+Identificação
+Número de Série
+Tipo de Indicação
+Material
+Escopo
+Faixa de Medição
+Menor Divisão
+Método
+Quantidade de Canais/Seringas
+Pontos por Canal
+🔹 Seção: Datas
+Data da Calibração
+Data de Emissão
+Próxima Calibração
+Técnico
+🔹 Seção: Condições Ambientais
+Padrão de Temperatura
+Temperatura Inicial
+Temperatura Final
+Padrão de Umidade
+Umidade Inicial
+Umidade Final
+Padrão de Pressão Atmosférica
+Pressão Inicial
+Pressão Final
+🔹 Seção: Observações
+Observações Gerais
+🎯 2. Campos que são LISTA (Select)
+
+Esses são importantes porque mudam comportamento da planilha 👇
+
+⚙️ Lista (Select)
+Tipo da Calibração
+👉 Ex:
+Acreditado Interno
+Rastreado Interno
+Rastreado Externo
+Endereço
+👉 (checkbox no Excel)
+O mesmo
+Tipo de Indicação
+👉 Ex:
+Digital
+Analógico
+Material
+👉 Ex:
+Bronze
+(outros conforme padrão)
+Escopo
+👉 Ex:
+Microvolume
+Método
+👉 Pode ter opções pré-definidas
+Quantidade de Canais/Seringas
+👉 Numérico mas influencia lógica
+Pontos por Canal ⭐ (CRÍTICO)
+👉 Esse aqui controla TUDO:
+1
+2
+3
+
+👉 Isso define quantas abas/resultados aparecem
+
+Padrão de Temperatura
+Padrão de Umidade
+Padrão de Pressão
+
+👉 Esses vêm de uma base (igual na planilha)
+
+🔥 3. Pontos de Calibração (DINÂMICO)
+
+Essa é a parte mais importante 👇
+
+Quantidade depende de:
+
+👉 Pontos por Canal
+
+Se for:
+
+1 → 1 ponto
+2 → 2 pontos
+3 → 3 pontos
+Para cada ponto:
+
+Você precisa de:
+
+Valor nominal
+Menor divisão
+Padrão utilizado
+Massa aparente (várias leituras)
+Temperatura do fluido
+Massa aparente (repetições)
+
+No print tem:
+
+👉 10 medições por ponto
+
+Então:
+
+Ponto 1:
+- Massa 1
+- Massa 2
+- ...
+- Massa 10
+Estrutura ideal no front:
+[Ponto 1]
+- Valor nominal
+- Menor divisão
+- Padrão utilizado
+- Temperatura
+- Massa (10 inputs)
+
+[Ponto 2] (se existir)
+...
+
+[Ponto 3] (se existir)
+...
+⚠️ 4. Campos que NÃO precisam no form
+
+Tudo que está cinza na planilha:
+
+❌ resultados calculados
+❌ incerteza
+❌ erro
+❌ fator k
+❌ cálculos
+
+👉 Isso o Excel faz sozinho
+
+🧠 5. Campos que mudam comportamento (CRÍTICOS)
+
+Esses você deve tratar com cuidado:
+
+🔥 Pontos por Canal
+controla quantos blocos aparecem
+🔥 Faixa de Medição
+influencia quais pontos são gerados (10, 50, 100%)
+🔥 Escopo
+muda lógica interna da planilha
+💡 6. Melhor prática pra POC
+
+Para não complicar agora:
+
+👉 FIXA alguns valores no começo:
+
+Escopo = Microvolume
+Método = padrão
+Material = padrão
+
+👉 E libera depois na versão 2
+
+🚀 Conclusão
+
+Para a POC você precisa:
+
+✅ ~30 campos fixos
+✅ ~3 campos select importantes
+✅ estrutura dinâmica de pontos
+✅ lista de padrões

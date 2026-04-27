@@ -1,0 +1,25 @@
+Edite o arquivo backend/.env e troque a linha 2 com suas credenciais do PostgreSQL:
+
+DATABASE_URL=postgresql://SEU_USUARIO:SUA_SENHA@localhost:5432/calibracao_db
+4. Instalar dependências e rodar
+Abra um terminal na pasta backend e execute:
+
+powershell
+# Criar ambiente virtual
+cd backend
+python -m venv venv
+# Ativar o venv
+.\venv\Scripts\Activate
+# Instalar dependências
+pip install -r requirements.txt
+# Rodar o servidor
+uvicorn app.main:app --reload --port 8000
+5. O que acontece no startup
+O Alembic roda automaticamente todas as migrations pendentes (cria as tabelas)
+Um usuário admin padrão é criado no primeiro login:
+Email: admin@calibracao.com
+Senha: admin123
+6. Testar
+API: http://localhost:8000/api/v1/health
+Docs Swagger: http://localhost:8000/docs
+O frontend em http://localhost:5173 já faz proxy para a API automaticamente

@@ -1,0 +1,101 @@
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+from datetime import datetime
+from decimal import Decimal
+from app.models.certificate import CertificateStatus
+
+
+# --- CertificatePoint schemas ---
+
+class CertificatePointCreate(BaseModel):
+    point_number: int
+    nominal_value: Optional[Decimal] = None
+    measured_value: Optional[Decimal] = None
+    error_value: Optional[Decimal] = None
+    uncertainty: Optional[Decimal] = None
+    unit: Optional[str] = None
+    excel_row_ref: Optional[str] = None
+
+
+class CertificatePointResponse(BaseModel):
+    id: UUID
+    point_number: int
+    nominal_value: Optional[Decimal] = None
+    measured_value: Optional[Decimal] = None
+    error_value: Optional[Decimal] = None
+    uncertainty: Optional[Decimal] = None
+    unit: Optional[str] = None
+    excel_row_ref: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+# --- Certificate schemas ---
+
+class CertificateCreate(BaseModel):
+    template_id: UUID
+    certificate_number: str
+    instrument_tag: Optional[str] = None
+    instrument_description: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    range_min: Optional[str] = None
+    range_max: Optional[str] = None
+    unit: Optional[str] = None
+    extra_fields: Optional[dict] = {}
+    calibration_date: Optional[datetime] = None
+    points: Optional[list[CertificatePointCreate]] = []
+
+
+class CertificateUpdate(BaseModel):
+    certificate_number: Optional[str] = None
+    instrument_tag: Optional[str] = None
+    instrument_description: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    range_min: Optional[str] = None
+    range_max: Optional[str] = None
+    unit: Optional[str] = None
+    extra_fields: Optional[dict] = None
+    calibration_date: Optional[datetime] = None
+    points: Optional[list[CertificatePointCreate]] = None
+
+
+class CertificateResponse(BaseModel):
+    id: UUID
+    template_id: UUID
+    created_by: UUID
+    certificate_number: str
+    instrument_tag: Optional[str] = None
+    instrument_description: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    range_min: Optional[str] = None
+    range_max: Optional[str] = None
+    unit: Optional[str] = None
+    extra_fields: Optional[dict] = None
+    status: CertificateStatus
+    pdf_path: Optional[str] = None
+    ai_summary: Optional[str] = None
+    calibration_date: Optional[datetime] = None
+    points: list[CertificatePointResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CertificateListResponse(BaseModel):
+    id: UUID
+    certificate_number: str
+    instrument_tag: Optional[str] = None
+    instrument_description: Optional[str] = None
+    status: CertificateStatus
+    calibration_date: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

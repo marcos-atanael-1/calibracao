@@ -1,0 +1,74 @@
+{
+  "name": "Certificado de Volume POC",
+  "description": "Template base da planilha Copy of Certificado de Volume-CVM-VOL-001 Rev.73.xlsm",
+  "excel_template_path": "C:\\Planilhas\\Certificado de Volume-CVM-VOL-001 Rev.73.xlsm",
+  "default_config": {
+    "input_sheet": "Dados",
+    "output_sheet": "Certificado",
+    "points_sheet": "Resultados - 1",
+    "post_fill_macros": ["Formcert"],
+    "results_mapping": {
+      "sheet_name_pattern": "Resultados - {sheet_number}",
+      "max_sheets": 12,
+      "point_blocks_per_sheet": 7,
+      "point_block_start_row": 12,
+      "point_block_row_step": 21,
+      "measurement_row_start_offset": 6,
+      "measurement_count": 10,
+      "sheet_header_fields": {
+        "identificacao_canal": "G4",
+        "observacao": "B6"
+      },
+      "point_fields": {
+        "valor_nominal": { "column": "E", "row_offset": 0 },
+        "menor_divisao": { "column": "E", "row_offset": 1 },
+        "escopo": { "column": "E", "row_offset": 2 },
+        "balanca_utilizada": { "column": "K", "row_offset": 0 },
+        "termometro": { "column": "K", "row_offset": 1 },
+        "massa_aparente_unidade": { "column": "H", "row_offset": 5 }
+      },
+      "measurement_fields": {
+        "massa_aparente": { "column": "I" },
+        "temperatura_fluido": { "column": "K" }
+      }
+    }
+  },
+  "fields": [
+    { "field_key": "empresa", "label": "Empresa", "field_type": "select", "excel_cell_ref": "Dados!F2", "display_order": 1, "is_required": false },
+    { "field_key": "tipo_calibracao", "label": "Tipo da Calibracao", "field_type": "select", "excel_cell_ref": "Dados!N2", "display_order": 2, "is_required": false },
+    { "field_key": "certificate_number", "label": "Numero do Certificado", "field_type": "text", "excel_cell_ref": "Dados!V2", "display_order": 3, "is_required": true },
+    { "field_key": "numero_orcamento", "label": "Numero do Orcamento", "field_type": "text", "excel_cell_ref": "Dados!W3", "display_order": 4, "is_required": false },
+    { "field_key": "contratante", "label": "Contratante", "field_type": "text", "excel_cell_ref": "Dados!F4", "display_order": 5, "is_required": false },
+    { "field_key": "endereco", "label": "Endereco", "field_type": "text", "excel_cell_ref": "Dados!F5", "display_order": 6, "is_required": false },
+    { "field_key": "interessado", "label": "Interessado", "field_type": "text", "excel_cell_ref": "Dados!F6", "display_order": 7, "is_required": false },
+    { "field_key": "endereco_interessado", "label": "Endereco do Interessado", "field_type": "text", "excel_cell_ref": "Dados!F7", "display_order": 8, "is_required": false },
+    { "field_key": "instrumento", "label": "Instrumento", "field_type": "select", "excel_cell_ref": "Dados!F9", "display_order": 9, "is_required": false },
+    { "field_key": "escopo", "label": "Escopo", "field_type": "select", "excel_cell_ref": "Dados!R9", "display_order": 10, "is_required": false },
+    { "field_key": "manufacturer", "label": "Fabricante", "field_type": "text", "excel_cell_ref": "Dados!F11", "display_order": 11, "is_required": false },
+    { "field_key": "model", "label": "Modelo", "field_type": "text", "excel_cell_ref": "Dados!F12", "display_order": 12, "is_required": false },
+    { "field_key": "identificacao", "label": "Identificacao", "field_type": "text", "excel_cell_ref": "Dados!F13", "display_order": 13, "is_required": false },
+    { "field_key": "serial_number", "label": "Numero de Serie", "field_type": "text", "excel_cell_ref": "Dados!F14", "display_order": 14, "is_required": false },
+    { "field_key": "tipo_indicacao", "label": "Tipo de Indicacao", "field_type": "select", "excel_cell_ref": "Dados!F15", "display_order": 15, "is_required": false },
+    { "field_key": "material", "label": "Material", "field_type": "select", "excel_cell_ref": "Dados!F16", "display_order": 16, "is_required": false },
+    { "field_key": "faixa_medicao", "label": "Faixa de Medicao", "field_type": "text", "excel_cell_ref": "Dados!W12", "display_order": 17, "is_required": false },
+    { "field_key": "menor_divisao", "label": "Menor Divisao", "field_type": "text", "excel_cell_ref": "Dados!R13", "display_order": 18, "is_required": false },
+    { "field_key": "metodo", "label": "Metodo", "field_type": "select", "excel_cell_ref": "Dados!R14", "display_order": 19, "is_required": false },
+    { "field_key": "qtd_canais", "label": "Quantidade de Canais/Seringas", "field_type": "number", "excel_cell_ref": "Dados!R15", "display_order": 20, "is_required": false },
+    { "field_key": "pontos_por_canal", "label": "Pontos por Canal", "field_type": "number", "excel_cell_ref": "Dados!W15", "display_order": 21, "is_required": false },
+    { "field_key": "local_calibracao", "label": "Local da Calibracao", "field_type": "select", "excel_cell_ref": "Dados!R16", "display_order": 22, "is_required": false },
+    { "field_key": "data_calibracao", "label": "Data da Calibracao", "field_type": "date", "excel_cell_ref": "Dados!F18", "display_order": 23, "is_required": false },
+    { "field_key": "data_emissao", "label": "Data da Emissao", "field_type": "date", "excel_cell_ref": "Dados!K18", "display_order": 24, "is_required": false },
+    { "field_key": "proxima_calibracao", "label": "Proxima Calibracao", "field_type": "date", "excel_cell_ref": "Dados!P18", "display_order": 25, "is_required": false },
+    { "field_key": "tecnico", "label": "Tecnico", "field_type": "select", "excel_cell_ref": "Dados!V18", "display_order": 26, "is_required": false },
+    { "field_key": "padrao_temperatura", "label": "Padrao de Temperatura", "field_type": "select", "excel_cell_ref": "Dados!F21", "display_order": 27, "is_required": false },
+    { "field_key": "padrao_umidade", "label": "Padrao de Umidade", "field_type": "select", "excel_cell_ref": "Dados!N21", "display_order": 28, "is_required": false },
+    { "field_key": "padrao_pressao", "label": "Padrao de Pressao", "field_type": "select", "excel_cell_ref": "Dados!V21", "display_order": 29, "is_required": false },
+    { "field_key": "temperatura_inicial", "label": "Temperatura Inicial", "field_type": "number", "excel_cell_ref": "Dados!F22", "display_order": 30, "is_required": false },
+    { "field_key": "temperatura_final", "label": "Temperatura Final", "field_type": "number", "excel_cell_ref": "Dados!F23", "display_order": 31, "is_required": false },
+    { "field_key": "umidade_inicial", "label": "Umidade Inicial", "field_type": "number", "excel_cell_ref": "Dados!N22", "display_order": 32, "is_required": false },
+    { "field_key": "umidade_final", "label": "Umidade Final", "field_type": "number", "excel_cell_ref": "Dados!N23", "display_order": 33, "is_required": false },
+    { "field_key": "pressao_inicial", "label": "Pressao Inicial", "field_type": "number", "excel_cell_ref": "Dados!V22", "display_order": 34, "is_required": false },
+    { "field_key": "pressao_final", "label": "Pressao Final", "field_type": "number", "excel_cell_ref": "Dados!V23", "display_order": 35, "is_required": false },
+    { "field_key": "observacoes", "label": "Observacoes Gerais", "field_type": "textarea", "excel_cell_ref": "Dados!B27", "display_order": 36, "is_required": false }
+  ]
+}

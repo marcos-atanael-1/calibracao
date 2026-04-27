@@ -1,0 +1,6 @@
+# Worker RPA
+requests
+pywin32
+python-dotenv
+sqlalchemy
+psycopg2-binary
