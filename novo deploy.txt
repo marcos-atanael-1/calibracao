@@ -1,0 +1,254 @@
+Como subir tudo
+
+1. VPS Linux
+Estrutura recomendada:
+
+/opt/calibracao/app
+/opt/calibracao/storage/pdfs
+sudo mkdir -p /opt/calibracao/storage/pdfs
+sudo chown -R www-data:www-data /opt/calibracao/storage
+sudo chmod -R 775 /opt/calibracao/storage/pdfs
+Os PDFs ficam na VPS, sim. O Agente Windows sobe o PDF pela API e o backend salva em PDF_STORAGE_PATH.
+Então:
+
+não precisa pasta compartilhada entre Windows e VPS
+precisa só que o backend tenha permissão de escrita nessa pasta
+2. Clonar ou atualizar projeto na VPS
+Primeira vez:
+
+cd /opt/calibracao
+git clone https://github.com/marcos-atanael-1/calibracao.git app
+Atualizações:
+
+cd /opt/calibracao/app
+git pull
+3. Backend na VPS
+
+cd /opt/calibracao/app/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+Arquivo backend/.env:
+
+APP_NAME=Calibracao API
+APP_VERSION=0.1.0
+DEBUG=false
+
+DATABASE_URL=postgresql://USUARIO:SENHA@localhost:5432/NOME_DO_BANCO
+
+SECRET_KEY=UMA_CHAVE_FORTE
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+ALGORITHM=HS256
+
+CORS_ORIGINS=["https://calibracao.pmlean.com"]
+
+PDF_STORAGE_PATH=/opt/calibracao/storage/pdfs
+WORKER_UPLOAD_TOKEN=UM_TOKEN_FORTE_AQUI
+Permissões:
+
+sudo chown -R www-data:www-data /opt/calibracao/app/backend
+sudo chown -R www-data:www-data /opt/calibracao/storage
+Service systemd:
+/etc/systemd/system/calibracao-backend.service
+
+[Unit]
+Description=Calibracao Backend
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/calibracao/app/backend
+EnvironmentFile=/opt/calibracao/app/backend/.env
+ExecStart=/opt/calibracao/app/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+Ativar:
+
+sudo systemctl daemon-reload
+sudo systemctl enable calibracao-backend
+sudo systemctl restart calibracao-backend
+sudo systemctl status calibracao-backend --no-pager
+Observação importante:
+
+o backend roda migrations no startup
+como agora existe migration de notificações, reiniciar o backend já aplica isso
+4. Frontend na VPS
+
+cd /opt/calibracao/app/frontend
+npm install
+npm run build
+5. Nginx
+Arquivo:
+/etc/nginx/sites-available/calibracao.pmlean.com
+
+server {
+    server_name calibracao.pmlean.com;
+
+    root /opt/calibracao/app/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/calibracao.pmlean.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/calibracao.pmlean.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    server_name calibracao.pmlean.com;
+    return 301 https://$host$request_uri;
+}
+Aplicar:
+
+sudo nginx -t
+sudo systemctl reload nginx
+6. Máquina Windows do Agente
+Sugestão de pasta:
+
+C:\worker_rpa
+planilhas em C:\Planilhas
+Atualizar código:
+
+cd C:\
+git clone https://github.com/marcos-atanael-1/calibracao.git worker_rpa_repo
+Se você só quer o worker:
+
+copie de worker_rpa_repo\worker_rpa\ para C:\worker_rpa
+ou mantenha o próprio clone e rode dali
+Criar venv:
+
+cd C:\worker_rpa
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Arquivo C:\worker_rpa\.env:
+
+DATABASE_URL=postgresql+psycopg2://USUARIO:SENHA@IP_DA_VPS:5432/NOME_DO_BANCO
+
+API_BASE_URL=https://calibracao.pmlean.com/api/v1
+UPLOAD_PDF_TO_API=true
+WORKER_UPLOAD_TOKEN=UM_TOKEN_FORTE_AQUI
+
+WORKER_ID=agente-01
+PDF_OUTPUT_DIR=./output
+KILL_EXCEL_ON_START=true
+RUN_MODE=scheduled_once
+7. Teste manual do Agente
+Antes do agendamento:
+
+cd C:\worker_rpa
+.\venv\Scripts\Activate.ps1
+python main.py
+Se tudo estiver certo, ele:
+
+mata Excels antigos
+pega 1 item da fila
+preenche a planilha
+gera PDF
+envia PDF para a VPS
+atualiza banco
+cria notificação
+8. Agendar no Windows Task Scheduler
+Ponto importante e honesto:
+
+Excel via COM funciona melhor com sessão interativa
+o mais seguro é marcar Run only when user is logged on
+se marcar Run whether user is logged on or not, automação de Excel pode falhar
+Para não aparecer terminal:
+
+use pythonw.exe do venv em vez de python.exe
+Caminho:
+
+C:\worker_rpa\venv\Scripts\pythonw.exe
+Configuração da tarefa:
+
+Abrir Task Scheduler
+Create Task
+Aba General
+Name: Agente Calibracao
+Marcar Run only when user is logged on
+Marcar Run with highest privileges
+Marcar Hidden
+Aba Triggers
+New
+Begin the task: On a schedule
+Daily
+Marcar Repeat task every: 1 minute
+for a duration of: Indefinitely
+Enabled
+Aba Actions
+Program/script:
+C:\worker_rpa\venv\Scripts\pythonw.exe
+Add arguments:
+main.py
+Start in:
+C:\worker_rpa
+Aba Settings
+Marcar:
+Allow task to be run on demand
+If the task is already running, then the following rule applies: Do not start a new instance
+Isso faz exatamente o que você quer:
+
+roda a cada 1 minuto
+não abre nova execução se a anterior ainda estiver rodando
+9. Atualização futura
+Na VPS:
+
+cd /opt/calibracao/app
+git pull
+
+cd /opt/calibracao/app/backend
+source venv/bin/activate
+systemctl restart calibracao-backend
+
+cd /opt/calibracao/app/frontend
+npm install
+npm run build
+systemctl reload nginx
+No Windows:
+
+atualizar os arquivos do worker_rpa
+se mudou dependência:
+cd C:\worker_rpa
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+10. Checklist final
+Na VPS:
+
+curl https://calibracao.pmlean.com/api/v1/health
+sudo systemctl status calibracao-backend --no-pager
+No Windows:
+
+cd C:\worker_rpa
+.\venv\Scripts\Activate.ps1
+python main.py
+Esperado:
+
+certificado entra em fila
+Agente processa
+PDF fica salvo na VPS
+download funciona no front
+sino recebe notificação
+Se quiser, eu posso fazer o próximo passo e te entregar dois arquivos modelo prontos para copiar:
+
+backend/.env.example
+worker_rpa/.env.example
