@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, LogOut, KeyRound, Check, Loader2, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/client'
@@ -10,13 +10,33 @@ const pageTitles = {
   '/certificates/new': 'Novo Certificado',
   '/templates': 'Templates',
   '/queue': 'Agente de Processamento',
-  '/users': 'Usuarios',
+  '/users': 'Usuários',
   '/settings': 'Configuracoes',
+}
+
+function formatNotificationTime(value) {
+  if (!value) return ''
+  try {
+    return new Date(value).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
 }
 
 export default function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const notificationsRef = useRef(null)
+
+  const [notifications, setNotifications] = useState([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationsUnread, setNotificationsUnread] = useState(0)
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
@@ -27,17 +47,68 @@ export default function Header() {
   const [pwLoading, setPwLoading] = useState(false)
 
   const location = useLocation()
+  const nav = useNavigate()
   const { user, logout, updateUser } = useAuth()
+
+  const loadNotifications = async () => {
+    if (!user) return
+    setNotificationsLoading(true)
+    try {
+      const { data } = await api.get('/notifications?limit=8')
+      setNotifications(data?.data || [])
+      setNotificationsUnread(data?.meta?.unread_count || 0)
+    } catch {
+      setNotifications([])
+      setNotificationsUnread(0)
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false)
       }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setNotificationsOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    if (!user) return undefined
+    loadNotifications()
+    const interval = window.setInterval(loadNotifications, 30000)
+    return () => window.clearInterval(interval)
+  }, [user])
+
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification.is_read) {
+        await api.post(`/notifications/${notification.id}/read`)
+        setNotifications((prev) => prev.map((item) => (
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )))
+        setNotificationsUnread((prev) => Math.max(0, prev - 1))
+      }
+    } catch {}
+
+    setNotificationsOpen(false)
+    if (notification.certificate_id) {
+      nav('/certificates')
+    }
+  }
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.post('/notifications/read-all')
+      setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })))
+      setNotificationsUnread(0)
+    } catch {}
+  }
 
   const handleChangePw = async (e) => {
     e.preventDefault()
@@ -91,22 +162,102 @@ export default function Header() {
       <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827' }}>{getTitle()}</h2>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        <button style={{
-          position: 'relative', padding: '8px', borderRadius: '8px', border: 'none',
-          background: 'transparent', color: '#9ca3af', cursor: 'pointer',
-        }}>
-          <Bell style={{ width: '20px', height: '20px' }} />
-          <span style={{
-            position: 'absolute', top: '6px', right: '6px',
-            width: '8px', height: '8px', background: '#dc2626', borderRadius: '50%',
-          }}></span>
-        </button>
+        <div style={{ position: 'relative' }} ref={notificationsRef}>
+          <button
+            onClick={() => {
+              setNotificationsOpen((prev) => !prev)
+              setDropdownOpen(false)
+              if (!notificationsOpen) loadNotifications()
+            }}
+            style={{
+              position: 'relative', padding: '8px', borderRadius: '8px', border: 'none',
+              background: notificationsOpen ? '#f3f4f6' : 'transparent', color: '#9ca3af', cursor: 'pointer',
+            }}
+          >
+            <Bell style={{ width: '20px', height: '20px' }} />
+            {notificationsUnread > 0 && (
+              <span style={{
+                position: 'absolute', top: '5px', right: '5px',
+                minWidth: '16px', height: '16px', padding: '0 4px',
+                background: '#dc2626', borderRadius: '999px', color: '#ffffff',
+                fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {notificationsUnread > 9 ? '9+' : notificationsUnread}
+              </span>
+            )}
+          </button>
+
+          {notificationsOpen && (
+            <div className="animate-fade-in" style={{
+              position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+              width: '360px', background: '#ffffff', borderRadius: '12px',
+              boxShadow: '0 18px 48px rgba(15, 23, 42, 0.18)', border: '1px solid #e5e7eb',
+              overflow: 'hidden', zIndex: 60,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #eef2f7' }}>
+                <div>
+                  <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>Notificacoes</p>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    {notificationsUnread > 0 ? `${notificationsUnread} nao lida(s)` : 'Tudo em dia'}
+                  </p>
+                </div>
+                {notificationsUnread > 0 && (
+                  <button
+                    onClick={markAllNotificationsRead}
+                    style={{
+                      border: 'none', background: 'transparent', color: '#002868',
+                      fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    Marcar todas
+                  </button>
+                )}
+              </div>
+
+              <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                {notificationsLoading ? (
+                  <div style={{ padding: '18px 16px', fontSize: '13px', color: '#64748b' }}>Carregando notificacoes...</div>
+                ) : notifications.length === 0 ? (
+                  <div style={{ padding: '18px 16px', fontSize: '13px', color: '#94a3b8' }}>Nenhuma notificacao por enquanto.</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      onClick={() => handleNotificationClick(notification)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        border: 'none',
+                        background: notification.is_read ? '#ffffff' : '#f8fbff',
+                        padding: '14px 16px',
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>{notification.title}</span>
+                        {!notification.is_read && (
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />
+                        )}
+                      </div>
+                      <p style={{ marginTop: '5px', fontSize: '12px', lineHeight: 1.5, color: '#475569' }}>{notification.message}</p>
+                      <p style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>{formatNotificationTime(notification.created_at)}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div style={{ width: '1px', height: '24px', background: '#e5e7eb' }} />
 
         <div style={{ position: 'relative' }} ref={dropdownRef}>
           <div
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+            onClick={() => {
+              setDropdownOpen(!dropdownOpen)
+              setNotificationsOpen(false)
+            }}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
               cursor: 'pointer', borderRadius: '8px', padding: '4px 8px',

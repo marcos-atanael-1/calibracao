@@ -7,8 +7,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.models.certificate import CertificateStatus
+from app.models.user import User
 from app.schemas.certificate import (
     CertificateCreate,
     CertificateListResponse,
@@ -21,17 +22,23 @@ from app.services.certificate_service import CertificateService
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
-# POC: hardcoded user_id (will be replaced by auth in MVP)
-POC_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+@router.get("/stats", response_model=APIResponse)
+def get_certificate_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return APIResponse(data=CertificateService.get_stats(db))
 
 
 @router.get("", response_model=APIResponse)
 def list_certificates(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(20, ge=1, le=1000),
     status_filter: CertificateStatus | None = None,
     template_id: UUID | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     result = CertificateService.get_all(
         db,
@@ -48,7 +55,11 @@ def list_certificates(
 
 
 @router.get("/{certificate_id}", response_model=APIResponse)
-def get_certificate(certificate_id: UUID, db: Session = Depends(get_db)):
+def get_certificate(
+    certificate_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     cert = CertificateService.get_by_id(db, certificate_id)
     return APIResponse(
         data=CertificateResponse.model_validate(cert).model_dump()
@@ -56,8 +67,12 @@ def get_certificate(certificate_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
-def create_certificate(data: CertificateCreate, db: Session = Depends(get_db)):
-    cert = CertificateService.create(db, data, user_id=POC_USER_ID)
+def create_certificate(
+    data: CertificateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    cert = CertificateService.create(db, data, user_id=current_user.id)
     return APIResponse(
         data=CertificateResponse.model_validate(cert).model_dump(),
         message="Certificado criado com sucesso",
@@ -69,6 +84,7 @@ def update_certificate(
     certificate_id: UUID,
     data: CertificateUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     cert = CertificateService.update(db, certificate_id, data)
     return APIResponse(
@@ -80,12 +96,20 @@ def update_certificate(
 @router.delete(
     "/{certificate_id}", status_code=status.HTTP_204_NO_CONTENT
 )
-def delete_certificate(certificate_id: UUID, db: Session = Depends(get_db)):
+def delete_certificate(
+    certificate_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     CertificateService.delete(db, certificate_id)
 
 
 @router.post("/{certificate_id}/queue", response_model=APIResponse)
-def enqueue_certificate(certificate_id: UUID, db: Session = Depends(get_db)):
+def enqueue_certificate(
+    certificate_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     queue_item = CertificateService.enqueue(db, certificate_id)
     return APIResponse(
         data=QueueItemResponse.model_validate(queue_item).model_dump(),
@@ -134,7 +158,11 @@ def upload_pdf(
 
 
 @router.get("/{certificate_id}/pdf")
-def download_pdf(certificate_id: UUID, db: Session = Depends(get_db)):
+def download_pdf(
+    certificate_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     cert = CertificateService.get_by_id(db, certificate_id)
     if not cert.pdf_path or not os.path.exists(cert.pdf_path):
         raise HTTPException(

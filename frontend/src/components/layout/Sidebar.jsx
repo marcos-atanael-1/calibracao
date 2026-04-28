@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   FileText,
   Settings,
-  ListOrdered,
+  Bot,
   Users,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -13,9 +13,9 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/certificates', label: 'Certificados', icon: FileText },
   { to: '/templates', label: 'Templates', icon: Settings },
-  { to: '/queue', label: 'Agente', icon: ListOrdered },
+  { to: '/queue', label: 'Agente', icon: Bot },
   { to: '/settings', label: 'Configuracoes', icon: SlidersHorizontal, adminOnly: true },
-  { to: '/users', label: 'Usuarios', icon: Users, adminOnly: true },
+  { to: '/users', label: 'Usuários', icon: Users, adminOnly: true },
 ]
 
 export default function Sidebar({ collapsed }) {

@@ -1,5 +1,6 @@
 from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 import math
 import os
@@ -14,6 +15,25 @@ from app.schemas.certificate import (
 
 
 class CertificateService:
+
+    @staticmethod
+    def get_stats(db: Session) -> dict:
+        stats = {
+            "total": 0,
+            "draft": 0,
+            "queued": 0,
+            "processing": 0,
+            "done": 0,
+            "error": 0,
+        }
+
+        for (status_value,) in db.query(Certificate.status).all():
+            stats["total"] += 1
+            key = status_value.value if hasattr(status_value, "value") else str(status_value)
+            if key in stats:
+                stats[key] += 1
+
+        return stats
 
     @staticmethod
     def get_all(
@@ -79,6 +99,8 @@ class CertificateService:
                 detail=f"Certificado '{data.certificate_number}' já existe",
             )
 
+        should_enqueue = data.enqueue_for_processing
+
         cert = Certificate(
             template_id=data.template_id,
             created_by=user_id,
@@ -93,7 +115,7 @@ class CertificateService:
             unit=data.unit,
             extra_fields=data.extra_fields,
             calibration_date=data.calibration_date,
-            status=CertificateStatus.DRAFT,
+            status=CertificateStatus.QUEUED if should_enqueue else CertificateStatus.DRAFT,
         )
         db.add(cert)
         db.flush()
@@ -106,6 +128,13 @@ class CertificateService:
                     **point_data.model_dump(),
                 )
                 db.add(point)
+
+        if should_enqueue:
+            queue_item = ProcessingQueue(
+                certificate_id=cert.id,
+                status=QueueStatus.PENDING,
+            )
+            db.add(queue_item)
 
         db.commit()
         db.refresh(cert)
@@ -123,7 +152,12 @@ class CertificateService:
                 detail="Somente certificados em rascunho podem ser editados",
             )
 
-        update_data = data.model_dump(exclude_unset=True, exclude={"points"})
+        should_enqueue = data.enqueue_for_processing
+
+        update_data = data.model_dump(
+            exclude_unset=True,
+            exclude={"points", "enqueue_for_processing"},
+        )
         for field, value in update_data.items():
             setattr(cert, field, value)
 
@@ -141,6 +175,23 @@ class CertificateService:
                 )
                 db.add(point)
 
+        if should_enqueue:
+            old_item = (
+                db.query(ProcessingQueue)
+                .filter(ProcessingQueue.certificate_id == certificate_id)
+                .first()
+            )
+            if old_item:
+                db.delete(old_item)
+                db.flush()
+
+            queue_item = ProcessingQueue(
+                certificate_id=certificate_id,
+                status=QueueStatus.PENDING,
+            )
+            db.add(queue_item)
+            cert.status = CertificateStatus.QUEUED
+
         db.commit()
         db.refresh(cert)
         return cert
@@ -148,13 +199,40 @@ class CertificateService:
     @staticmethod
     def delete(db: Session, certificate_id: UUID) -> None:
         cert = CertificateService.get_by_id(db, certificate_id)
-        if cert.status not in (CertificateStatus.DRAFT, CertificateStatus.ERROR):
+        if cert.status not in (
+            CertificateStatus.DRAFT,
+            CertificateStatus.QUEUED,
+            CertificateStatus.ERROR,
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Somente certificados em rascunho ou com erro podem ser excluídos",
             )
-        db.delete(cert)
-        db.commit()
+        pdf_path = cert.pdf_path
+
+        try:
+            db.query(ProcessingQueue).filter(
+                ProcessingQueue.certificate_id == certificate_id
+            ).delete(synchronize_session=False)
+
+            db.query(CertificatePoint).filter(
+                CertificatePoint.certificate_id == certificate_id
+            ).delete(synchronize_session=False)
+
+            db.delete(cert)
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Nao foi possivel excluir o certificado porque ele possui dependencias vinculadas",
+            ) from exc
+
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                pass
 
     @staticmethod
     def enqueue(db: Session, certificate_id: UUID) -> ProcessingQueue:

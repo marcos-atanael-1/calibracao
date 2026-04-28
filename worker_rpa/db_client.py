@@ -1,4 +1,5 @@
 import logging
+import uuid
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, text
@@ -207,11 +208,11 @@ class DatabaseClient:
                 worker_id = COALESCE(:worker_id, worker_id),
                 error_message = :error_message,
                 completed_at = CASE
-                    WHEN :status IN ('done', 'error') THEN NOW()
+                    WHEN :status IN ('DONE', 'ERROR') THEN NOW()
                     ELSE completed_at
                 END,
                 retry_count = CASE
-                    WHEN :status = 'error' THEN retry_count + 1
+                    WHEN :status = 'ERROR' THEN retry_count + 1
                     ELSE retry_count
                 END
             WHERE id = :queue_id
@@ -225,6 +226,40 @@ class DatabaseClient:
                 status = :certificate_status,
                 pdf_path = COALESCE(:pdf_path, pdf_path)
             WHERE id = :certificate_id
+            """
+        )
+        notification_context_stmt = text(
+            """
+            SELECT
+                c.created_by AS user_id,
+                c.certificate_number
+            FROM certificates c
+            WHERE c.id = :certificate_id
+            """
+        )
+        notification_insert_stmt = text(
+            """
+            INSERT INTO notifications (
+                id,
+                user_id,
+                certificate_id,
+                queue_id,
+                title,
+                message,
+                notification_type,
+                is_read,
+                created_at
+            ) VALUES (
+                :notification_id,
+                :user_id,
+                :certificate_id,
+                :queue_id,
+                :title,
+                :message,
+                :notification_type,
+                false,
+                NOW()
+            )
             """
         )
         queue_status = self.QUEUE_STATUS.get(status, status)
@@ -253,5 +288,40 @@ class DatabaseClient:
                     "pdf_path": pdf_path,
                 },
             )
+
+            if queue_status in ("DONE", "ERROR"):
+                context = conn.execute(
+                    notification_context_stmt,
+                    {"certificate_id": row["certificate_id"]},
+                ).mappings().first()
+
+                if context and context.get("user_id"):
+                    if queue_status == "DONE":
+                        title = "Certificado finalizado"
+                        message = (
+                            f"O Agente concluiu a geracao do certificado "
+                            f"{context['certificate_number']}."
+                        )
+                        notification_type = "success"
+                    else:
+                        title = "Falha no processamento"
+                        message = (
+                            f"O Agente encontrou um erro ao processar o certificado "
+                            f"{context['certificate_number']}."
+                        )
+                        notification_type = "error"
+
+                    conn.execute(
+                        notification_insert_stmt,
+                        {
+                            "notification_id": str(uuid.uuid4()),
+                            "user_id": context["user_id"],
+                            "certificate_id": row["certificate_id"],
+                            "queue_id": queue_id,
+                            "title": title,
+                            "message": message,
+                            "notification_type": notification_type,
+                        },
+                    )
 
         return True

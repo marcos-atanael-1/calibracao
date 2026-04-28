@@ -14,6 +14,7 @@ class QueueService:
     def get_all(db: Session) -> list[ProcessingQueue]:
         return (
             db.query(ProcessingQueue)
+            .options(joinedload(ProcessingQueue.certificate))
             .order_by(ProcessingQueue.created_at.desc())
             .all()
         )

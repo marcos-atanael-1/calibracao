@@ -47,6 +47,7 @@ class CertificateCreate(BaseModel):
     extra_fields: Optional[dict] = {}
     calibration_date: Optional[datetime] = None
     points: Optional[list[CertificatePointCreate]] = []
+    enqueue_for_processing: bool = True
 
 
 class CertificateUpdate(BaseModel):
@@ -62,6 +63,7 @@ class CertificateUpdate(BaseModel):
     extra_fields: Optional[dict] = None
     calibration_date: Optional[datetime] = None
     points: Optional[list[CertificatePointCreate]] = None
+    enqueue_for_processing: bool = False
 
 
 class CertificateResponse(BaseModel):
@@ -94,6 +96,8 @@ class CertificateListResponse(BaseModel):
     certificate_number: str
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
+    extra_fields: Optional[dict] = None
+    pdf_path: Optional[str] = None
     status: CertificateStatus
     calibration_date: Optional[datetime] = None
     created_at: datetime

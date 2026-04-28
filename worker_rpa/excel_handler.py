@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import unicodedata
 from pathlib import Path
 
 import pythoncom
@@ -69,6 +70,15 @@ class ExcelHandler:
             return stripped if stripped != "" else None
         return value
 
+    def _normalize_text(self, value):
+        return (
+            unicodedata.normalize("NFD", str(value or ""))
+            .encode("ascii", "ignore")
+            .decode("ascii")
+            .strip()
+            .lower()
+        )
+
     def _write_cell(self, sheet_name, cell_ref, value):
         normalized = self._normalize_value(value)
         if normalized is None:
@@ -76,6 +86,72 @@ class ExcelHandler:
 
         logger.info("  %s!%s = %s", sheet_name, cell_ref, normalized)
         self.workbook.Sheets(sheet_name).Range(cell_ref).Value = normalized
+
+    def _clear_cell(self, sheet_name, cell_ref):
+        if not cell_ref:
+            return
+        logger.info("  limpando %s!%s", sheet_name, cell_ref)
+        self.workbook.Sheets(sheet_name).Range(cell_ref).Value = ""
+
+    def _set_option_button(self, sheet_name, button_caption):
+        if not button_caption:
+            return False
+
+        target = self._normalize_text(button_caption)
+        sheet = self.workbook.Sheets(sheet_name)
+
+        try:
+            for ole_object in sheet.OLEObjects():
+                try:
+                    caption = getattr(ole_object.Object, "Caption", "")
+                    if self._normalize_text(caption) == target:
+                        ole_object.Object.Value = True
+                        logger.info("  opcao selecionada via OLEObject: %s", button_caption)
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        try:
+            for shape in sheet.Shapes:
+                try:
+                    caption = shape.TextFrame.Characters().Text
+                    if self._normalize_text(caption) == target:
+                        shape.ControlFormat.Value = 1
+                        logger.info("  opcao selecionada via Shape: %s", button_caption)
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        logger.warning("  opcao nao encontrada na planilha: %s", button_caption)
+        return False
+
+    def _apply_measurement_mode(self, extra_fields, default_config):
+        mode = extra_fields.get("tipo_faixa")
+        mapping = default_config.get("measurement_mode_mapping") or {}
+        if not mode or not mapping:
+            return
+
+        sheet_name = mapping.get("sheet_name") or default_config.get("input_sheet") or "Dados"
+        button_captions = mapping.get("button_captions") or {}
+        field_cells = mapping.get("field_cells") or {}
+
+        self._set_option_button(sheet_name, button_captions.get(mode))
+
+        all_mode_cells = set()
+        for mode_fields in field_cells.values():
+            if isinstance(mode_fields, dict):
+                all_mode_cells.update(cell_ref for cell_ref in mode_fields.values() if cell_ref)
+
+        for cell_ref in all_mode_cells:
+            self._clear_cell(sheet_name, cell_ref)
+
+        active_mode_fields = field_cells.get(mode) or {}
+        for field_key, cell_ref in active_mode_fields.items():
+            self._write_cell(sheet_name, cell_ref, extra_fields.get(field_key))
 
     def _build_results_sheet_sequence(self, mapping, fallback_sheet_name):
         pattern = mapping.get("sheet_name_pattern")
@@ -221,9 +297,19 @@ class ExcelHandler:
 
             self.workbook = self.excel.Workbooks.Open(
                 os.path.abspath(work_file),
+                UpdateLinks=3,
                 ReadOnly=False,
                 IgnoreReadOnlyRecommended=True,
             )
+
+            try:
+                self.workbook.UpdateLink(
+                    Name=self.workbook.LinkSources(),
+                    Type=1,
+                )
+                logger.info("Vinculos externos atualizados com sucesso")
+            except Exception as exc:
+                logger.warning("Nao foi possivel atualizar vinculos externos: %s", exc)
 
             try:
                 self.excel.AutomationSecurity = 2
@@ -282,6 +368,8 @@ class ExcelHandler:
                     self._write_cell(sheet_name, cell_ref, value)
 
             extra = certificate.get("extra_fields", {}) or {}
+            self._apply_measurement_mode(extra, default_config)
+
             for key, value in extra.items():
                 if key not in field_mappings:
                     continue
@@ -325,7 +413,25 @@ class ExcelHandler:
             self.workbook.Save()
 
             pdf_path = os.path.join(work_dir, f"{cert_number}.pdf")
-            output_sheet.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
+            try:
+                output_sheet.Activate()
+                output_sheet.Select()
+            except Exception:
+                pass
+
+            try:
+                logger.info("Area de impressao da aba %s: %s", output_sheet_name, output_sheet.PageSetup.PrintArea)
+            except Exception:
+                logger.info("Nao foi possivel ler a area de impressao da aba %s", output_sheet_name)
+
+            output_sheet.ExportAsFixedFormat(
+                Type=0,
+                Filename=os.path.abspath(pdf_path),
+                Quality=0,
+                IncludeDocProperties=True,
+                IgnorePrintAreas=False,
+                OpenAfterPublish=False,
+            )
 
             logger.info("PDF gerado: %s", pdf_path)
             return pdf_path

@@ -29,6 +29,7 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="certificates" element={<Certificates />} />
         <Route path="certificates/new" element={<CertificateForm />} />
+        <Route path="certificates/:id/edit" element={<CertificateForm />} />
         <Route path="templates" element={<Templates />} />
         <Route path="queue" element={<Queue />} />
         <Route path="users" element={<UsersPage />} />

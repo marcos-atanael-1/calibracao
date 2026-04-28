@@ -46,6 +46,11 @@ class User(Base):
     certificates: Mapped[list["Certificate"]] = relationship(
         back_populates="created_by_user"
     )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="Notification.created_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role.value})>"

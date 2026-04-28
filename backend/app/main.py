@@ -70,7 +70,7 @@ app.add_middleware(
 )
 
 # Include routers
-from app.routers import auth, templates, certificates, queue, users, settings as settings_router
+from app.routers import auth, templates, certificates, queue, users, settings as settings_router, notifications
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -78,6 +78,7 @@ app.include_router(templates.router, prefix="/api/v1")
 app.include_router(certificates.router, prefix="/api/v1")
 app.include_router(queue.router, prefix="/api/v1")
 app.include_router(settings_router.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

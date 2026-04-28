@@ -14,9 +14,10 @@ export function AuthProvider({ children }) {
     setLoading(true)
     try {
       const { data } = await api.post('/auth/login', { email, password })
-      const { access_token, must_change_password, user: userData } = data
+      const { access_token, refresh_token, must_change_password, user: userData } = data
       const userWithFlag = { ...userData, must_change_password: must_change_password || false }
       localStorage.setItem('access_token', access_token)
+      localStorage.setItem('refresh_token', refresh_token)
       localStorage.setItem('user', JSON.stringify(userWithFlag))
       setUser(userWithFlag)
       return { success: true }
@@ -34,6 +35,7 @@ export function AuthProvider({ children }) {
           must_change_password: false,
         }
         localStorage.setItem('access_token', 'demo-token')
+        localStorage.removeItem('refresh_token')
         localStorage.setItem('user', JSON.stringify(demoUser))
         setUser(demoUser)
         return { success: true }
@@ -54,6 +56,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     setUser(null)
   }

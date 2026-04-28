@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import api from '../api/client'
 
@@ -62,6 +62,12 @@ const buildFormOptions = (settingsList) => {
 
 const defaultPointScopes = ['Dispensadores', 'Microvolume', 'Picnometro', 'Seringa', 'Titulador', 'Vidraria de Laboratorio']
 const defaultApparentMassUnits = ['ug', 'mg', 'g', 'kg']
+const defaultMeasurementUnits = ['L', 'dL', 'cL', 'mL', 'uL', 'dm3', 'cm3', 'mm3']
+const measurementModes = [
+  { value: 'ponto_fixo', label: 'Ponto Fixo' },
+  { value: 'multipontos', label: 'Multipontos' },
+  { value: 'faixa_variavel', label: 'Faixa Variavel' },
+]
 
 function createEmptyPoint(pointNumber) {
   return {
@@ -73,7 +79,6 @@ function createEmptyPoint(pointNumber) {
     termometro: '',
     escopo: '',
     massa_aparente_unidade: 'kg',
-    observacao: '',
     massas: Array.from({ length: 10 }, (_, index) => ({
       medicao: index + 1,
       massa_aparente: '',
@@ -92,10 +97,36 @@ function createEmptyChannel(channelNumber, pointsPerChannel) {
   }
 }
 
+function findOption(optionsList, preferredValue, fallbackValue = '') {
+  if (!Array.isArray(optionsList) || optionsList.length === 0) {
+    return preferredValue || fallbackValue
+  }
+
+  const directMatch = optionsList.find((item) => item === preferredValue)
+  if (directMatch) return directMatch
+
+  const normalizedPreferred = normalizeSettingToken(preferredValue)
+  const normalizedMatch = optionsList.find((item) => normalizeSettingToken(item) === normalizedPreferred)
+  if (normalizedMatch) return normalizedMatch
+
+  return fallbackValue && optionsList.includes(fallbackValue) ? fallbackValue : (preferredValue || optionsList[0] || '')
+}
+
+function generateExampleCertificateNumber() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const stamp = `${now.getMonth() + 1}`.padStart(2, '0') + `${now.getDate()}`.padStart(2, '0')
+  const randomBlock = Math.floor(1000 + Math.random() * 9000)
+  return `CAL-${year}-${stamp}${randomBlock}`
+}
+
 export default function CertificateForm() {
   const nav = useNavigate()
+  const { id } = useParams()
+  const isEditing = Boolean(id)
   const [templates, setTemplates] = useState([])
-  const [saving, setSaving] = useState(false)
+  const [savingMode, setSavingMode] = useState('')
+  const [loadingDraft, setLoadingDraft] = useState(isEditing)
   const [options, setOptions] = useState({})
   const [activeChannelTab, setActiveChannelTab] = useState(0)
 
@@ -117,7 +148,12 @@ export default function CertificateForm() {
     tipo_indicacao: '',
     material: '',
     escopo: '',
-    faixa_medicao: '',
+    tipo_faixa: 'multipontos',
+    capacidade: '',
+    faixa_inicial: '',
+    faixa_final: '',
+    capacidade_maxima: '',
+    unidade_medicao: 'uL',
     menor_divisao: '',
     metodo: '',
     qtd_canais: '1',
@@ -146,6 +182,73 @@ export default function CertificateForm() {
       setOptions(buildFormOptions(r.data.data || []))
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!id) {
+      setLoadingDraft(false)
+      return
+    }
+
+    api.get(`/certificates/${id}`).then((response) => {
+      const certificate = response.data.data
+      const extra = certificate.extra_fields || {}
+
+      setForm((prev) => ({
+        ...prev,
+        template_id: certificate.template_id || '',
+        certificate_number: certificate.certificate_number || '',
+        empresa: extra.empresa || '',
+        tipo_calibracao: extra.tipo_calibracao || '',
+        numero_orcamento: extra.numero_orcamento || '',
+        contratante: extra.contratante || '',
+        endereco: extra.endereco || '',
+        interessado: extra.interessado || '',
+        endereco_interessado: extra.endereco_interessado || '',
+        instrumento: extra.instrumento || certificate.instrument_description || '',
+        fabricante: certificate.manufacturer || '',
+        modelo: certificate.model || '',
+        identificacao: extra.identificacao || certificate.instrument_tag || '',
+        numero_serie: certificate.serial_number || '',
+        tipo_indicacao: extra.tipo_indicacao || '',
+        material: extra.material || '',
+        escopo: extra.escopo || '',
+        tipo_faixa: extra.tipo_faixa || 'multipontos',
+        capacidade: extra.capacidade || '',
+        faixa_inicial: extra.faixa_inicial || '',
+        faixa_final: extra.faixa_final || '',
+        capacidade_maxima: extra.capacidade_maxima || '',
+        unidade_medicao: extra.unidade_medicao || certificate.unit || 'uL',
+        menor_divisao: extra.menor_divisao || '',
+        metodo: extra.metodo || '',
+        qtd_canais: extra.qtd_canais || '1',
+        pontos_por_canal: extra.pontos_por_canal || '1',
+        data_calibracao: extra.data_calibracao || (certificate.calibration_date ? String(certificate.calibration_date).slice(0, 10) : ''),
+        data_emissao: extra.data_emissao || '',
+        proxima_calibracao: extra.proxima_calibracao || '',
+        tecnico: extra.tecnico || '',
+        padrao_temperatura: extra.padrao_temperatura || '',
+        temperatura_inicial: extra.temperatura_inicial || '',
+        temperatura_final: extra.temperatura_final || '',
+        padrao_umidade: extra.padrao_umidade || '',
+        umidade_inicial: extra.umidade_inicial || '',
+        umidade_final: extra.umidade_final || '',
+        padrao_pressao: extra.padrao_pressao || '',
+        pressao_inicial: extra.pressao_inicial || '',
+        pressao_final: extra.pressao_final || '',
+        observacoes: extra.observacoes || '',
+      }))
+
+      if (Array.isArray(extra.canais_calibracao) && extra.canais_calibracao.length > 0) {
+        setChannels(extra.canais_calibracao)
+      }
+      setActiveChannelTab(0)
+    }).catch((err) => {
+      alert(err.response?.data?.detail || 'Erro ao carregar rascunho')
+      nav('/certificates')
+    }).finally(() => {
+      setLoadingDraft(false)
+    })
+  }, [id, nav])
 
   useEffect(() => {
     const channelCount = Math.max(1, Number.parseInt(form.qtd_canais, 10) || 1)
@@ -234,12 +337,38 @@ export default function CertificateForm() {
     [channels]
   )
 
-  const submit = async (e) => {
-    e.preventDefault()
-    setSaving(true)
+  const measurementUnits = defaultMeasurementUnits
+
+  const selectedMeasurementMode = form.tipo_faixa || 'multipontos'
+
+  const buildCertificatePayload = () => {
+    let rangeMin = ''
+    let rangeMax = ''
+    let unit = form.unidade_medicao || ''
+
+    if (selectedMeasurementMode === 'ponto_fixo') {
+      rangeMin = form.capacidade || ''
+    } else if (selectedMeasurementMode === 'multipontos') {
+      rangeMin = form.faixa_inicial || ''
+      rangeMax = form.faixa_final || ''
+    } else if (selectedMeasurementMode === 'faixa_variavel') {
+      rangeMax = form.capacidade_maxima || ''
+    }
+
+    return {
+      rangeMin,
+      rangeMax,
+      unit,
+    }
+  }
+
+  const submit = async (e, enqueueForProcessing = true) => {
+    if (e?.preventDefault) e.preventDefault()
+    setSavingMode(enqueueForProcessing ? 'final' : 'draft')
     try {
       const { template_id, certificate_number, ...extra } = form
-      await api.post('/certificates', {
+      const { rangeMin, rangeMax, unit } = buildCertificatePayload()
+      const payload = {
         template_id,
         certificate_number,
         instrument_tag: form.identificacao,
@@ -247,9 +376,9 @@ export default function CertificateForm() {
         manufacturer: form.fabricante,
         model: form.modelo,
         serial_number: form.numero_serie,
-        range_min: form.faixa_medicao,
-        range_max: '',
-        unit: '',
+        range_min: rangeMin,
+        range_max: rangeMax,
+        unit,
         calibration_date: form.data_calibracao || null,
         extra_fields: {
           ...extra,
@@ -257,12 +386,20 @@ export default function CertificateForm() {
           pontos_calibracao: flattenedPoints,
         },
         points: [],
-      })
+        enqueue_for_processing: enqueueForProcessing,
+      }
+
+      if (isEditing) {
+        await api.put(`/certificates/${id}`, payload)
+      } else {
+        await api.post('/certificates', payload)
+      }
+
       nav('/certificates')
     } catch (err) {
       alert(err.response?.data?.detail || 'Erro ao salvar')
     } finally {
-      setSaving(false)
+      setSavingMode('')
     }
   }
 
@@ -301,16 +438,146 @@ export default function CertificateForm() {
   const apparentMassUnits = (options.apparent_mass_units || []).length > 0 ? options.apparent_mass_units : defaultApparentMassUnits
   const activeChannel = channels[activeChannelTab]
 
+  const fillExampleData = () => {
+    const pocTemplate = templates.find((template) =>
+      normalizeSettingToken(template.name).includes('certificado_de_volume_poc')
+    )
+
+    setForm((prev) => ({
+      ...prev,
+      template_id: pocTemplate?.id || prev.template_id,
+      certificate_number: generateExampleCertificateNumber(),
+      empresa: findOption(options.companies, 'Elus', 'Elus'),
+      tipo_calibracao: findOption(options.calibration_types, 'Acreditado Interno', 'Acreditado Interno'),
+      numero_orcamento: '12345',
+      contratante: 'Testando',
+      endereco: 'Rua do Teste',
+      interessado: 'Teste interessado',
+      endereco_interessado: 'Rua do interessado',
+      instrumento: findOption(options.instruments, 'Micropipeta de Volume Fixo', 'Micropipeta de Volume Fixo'),
+      fabricante: 'teste',
+      modelo: 'teste',
+      identificacao: 'teste',
+      numero_serie: 'teste',
+      tipo_indicacao: findOption(options.indication_types, 'Digital', 'Digital'),
+      material: findOption(options.materials, 'Bronze', 'Bronze'),
+      escopo: findOption(options.scopes, 'Microvolume', 'Microvolume'),
+      tipo_faixa: 'multipontos',
+      capacidade: '',
+      faixa_inicial: '0',
+      faixa_final: '100',
+      capacidade_maxima: '',
+      unidade_medicao: 'uL',
+      menor_divisao: '0,1',
+      metodo: findOption(options.methods, 'Normal', 'Normal'),
+      qtd_canais: '1',
+      pontos_por_canal: '3',
+      data_calibracao: '2026-04-27',
+      data_emissao: '2026-04-27',
+      proxima_calibracao: '2026-04-30',
+      tecnico: findOption(options.technicians, 'Carlos Augusto Benevides'),
+      padrao_temperatura: findOption(options.temperature_standards, 'E.TH.LQ-001(OUT)', 'E.TH.LQ-001(OUT)'),
+      temperatura_inicial: '21',
+      temperatura_final: '21',
+      padrao_umidade: findOption(options.humidity_standards, 'E.TH.LQ-001', 'E.TH.LQ-001'),
+      umidade_inicial: '51',
+      umidade_final: '56',
+      padrao_pressao: findOption(options.pressure_standards, 'E.TH.LQ-001', 'E.TH.LQ-001'),
+      pressao_inicial: '930',
+      pressao_final: '930',
+      observacoes: '',
+    }))
+
+    const makeMassRows = (value) => {
+      const rows = Array.from({ length: 10 }, (_, index) => ({
+        medicao: index + 1,
+        massa_aparente: value,
+        temperatura_fluido: '20',
+      }))
+      return rows
+    }
+
+    makeMassRows('0.01')[6].massa_aparente = '-0.99'
+
+    setChannels([
+      {
+        channel_number: 1,
+        identificacao_canal: 'teste',
+        observacao: '',
+        points: [
+          {
+            point_number: 1,
+            valor_nominal: '10',
+            menor_divisao: '0,1',
+            padrao_utilizado: '',
+            balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
+            termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
+            escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massas: makeMassRows('0.01'),
+          },
+          {
+            point_number: 2,
+            valor_nominal: '50',
+            menor_divisao: '0,1',
+            padrao_utilizado: '',
+            balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
+            termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
+            escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massas: makeMassRows('0.05'),
+          },
+          {
+            point_number: 3,
+            valor_nominal: '100',
+            menor_divisao: '0,1',
+            padrao_utilizado: '',
+            balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
+            termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
+            escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massas: makeMassRows('0.1'),
+          },
+        ],
+      },
+    ])
+    setActiveChannelTab(0)
+  }
+
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <button onClick={() => nav('/certificates')} style={{
-        display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
-        color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer',
-      }}>
-        <ArrowLeft style={{ width: '16px', height: '16px' }} /> Voltar
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+        <button onClick={() => nav('/certificates')} style={{
+          display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+          color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer',
+        }}>
+          <ArrowLeft style={{ width: '16px', height: '16px' }} /> Voltar
+        </button>
 
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <button
+          type="button"
+          onClick={fillExampleData}
+          style={{
+            padding: '10px 16px',
+            borderRadius: '10px',
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            color: '#334155',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 600,
+          }}
+        >
+          Preencher Exemplo POC
+        </button>
+      </div>
+
+      {loadingDraft ? (
+        <div className="card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
+          Carregando rascunho...
+        </div>
+      ) : (
+      <form onSubmit={(e) => submit(e, true)} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Template')}
           <select value={form.template_id} onChange={(e) => set('template_id', e.target.value)} required className="input-field">
@@ -344,8 +611,73 @@ export default function CertificateForm() {
             {renderSelect('Tipo de Indicacao', 'tipo_indicacao', 'indication_types')}
             {renderSelect('Material', 'material', 'materials')}
             {renderSelect('Escopo', 'escopo', 'scopes')}
-            {renderInput('Faixa de Medicao', 'faixa_medicao')}
-            {renderInput('Menor Divisao', 'menor_divisao')}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>Tipo</label>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {measurementModes.map((mode) => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => set('tipo_faixa', mode.value)}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '999px',
+                      border: form.tipo_faixa === mode.value ? '1px solid #002868' : '1px solid #dbe2ea',
+                      background: form.tipo_faixa === mode.value ? '#e8eef8' : '#ffffff',
+                      color: form.tipo_faixa === mode.value ? '#002868' : '#475569',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedMeasurementMode === 'ponto_fixo' && (
+              <>
+                {renderInput('Capacidade', 'capacidade')}
+                <div>
+                  <label style={labelStyle}>Unidade</label>
+                  <select value={form.unidade_medicao} onChange={(e) => set('unidade_medicao', e.target.value)} className="input-field">
+                    <option value="">Selecione...</option>
+                    {measurementUnits.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                {renderInput('Menor Divisao', 'menor_divisao')}
+              </>
+            )}
+
+            {selectedMeasurementMode === 'multipontos' && (
+              <>
+                {renderInput('Faixa Inicial', 'faixa_inicial')}
+                {renderInput('Faixa Final', 'faixa_final')}
+                <div>
+                  <label style={labelStyle}>Unidade</label>
+                  <select value={form.unidade_medicao} onChange={(e) => set('unidade_medicao', e.target.value)} className="input-field">
+                    <option value="">Selecione...</option>
+                    {measurementUnits.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                {renderInput('Menor Divisao', 'menor_divisao')}
+              </>
+            )}
+
+            {selectedMeasurementMode === 'faixa_variavel' && (
+              <>
+                {renderInput('Capacidade Maxima', 'capacidade_maxima')}
+                <div>
+                  <label style={labelStyle}>Unidade</label>
+                  <select value={form.unidade_medicao} onChange={(e) => set('unidade_medicao', e.target.value)} className="input-field">
+                    <option value="">Selecione...</option>
+                    {measurementUnits.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+
             {renderSelect('Metodo', 'metodo', 'methods')}
             {renderInput('Qtd Canais/Seringas', 'qtd_canais', 'number')}
             <div>
@@ -460,10 +792,6 @@ export default function CertificateForm() {
                     <div>
                       <label style={{ ...labelStyle, fontSize: '12px' }}>Padrao Utilizado</label>
                       <input type="text" value={point.padrao_utilizado} onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'padrao_utilizado', e.target.value)} className="input-field" />
-                    </div>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: '12px' }}>Observacao do Ponto</label>
-                      <input type="text" value={point.observacao} onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'observacao', e.target.value)} className="input-field" />
                     </div>
                   </div>
 
@@ -588,12 +916,34 @@ export default function CertificateForm() {
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="submit" disabled={saving} className="btn-primary" style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Save style={{ width: '16px', height: '16px' }} /> {saving ? 'Salvando...' : 'Salvar Certificado'}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={(e) => submit(e, false)}
+            disabled={savingMode !== ''}
+            style={{
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderRadius: '10px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              cursor: savingMode !== '' ? 'not-allowed' : 'pointer',
+              opacity: savingMode !== '' ? 0.7 : 1,
+              fontWeight: 600,
+            }}
+          >
+            <Save style={{ width: '16px', height: '16px' }} />
+            {savingMode === 'draft' ? 'Salvando rascunho...' : 'Salvar rascunho'}
+          </button>
+          <button type="submit" disabled={savingMode !== ''} className="btn-primary" style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', opacity: savingMode !== '' ? 0.7 : 1 }}>
+            <Save style={{ width: '16px', height: '16px' }} /> {savingMode === 'final' ? 'Enviando ao Agente...' : (isEditing ? 'Salvar e enviar ao Agente' : 'Salvar e enviar ao Agente')}
           </button>
         </div>
       </form>
+      )}
     </div>
   )
 }
