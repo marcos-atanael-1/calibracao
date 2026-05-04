@@ -133,3 +133,17 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .desktop-sidebar {
+    display: none !important;
+  }
+
+  .mobile-bottom-nav {
+    display: flex !important;
+  }
+}

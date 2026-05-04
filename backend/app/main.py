@@ -8,6 +8,7 @@ from alembic.config import Config
 from alembic import command
 
 from app.config import settings
+from app.services.instrument_type_service import InstrumentTypeService
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     try:
         db = SessionLocal()
         SettingService.seed_defaults(db)
+        InstrumentTypeService.seed_from_legacy_settings(db)
         db.close()
         logger.info("✅ Settings padrão verificados")
     except Exception as e:
@@ -70,7 +72,7 @@ app.add_middleware(
 )
 
 # Include routers
-from app.routers import auth, templates, certificates, queue, users, settings as settings_router, notifications
+from app.routers import auth, templates, certificates, queue, users, settings as settings_router, notifications, instrument_types, ai_setup
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -79,6 +81,8 @@ app.include_router(certificates.router, prefix="/api/v1")
 app.include_router(queue.router, prefix="/api/v1")
 app.include_router(settings_router.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(instrument_types.router, prefix="/api/v1")
+app.include_router(ai_setup.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

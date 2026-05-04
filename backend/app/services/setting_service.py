@@ -105,6 +105,12 @@ class SettingService:
                 "values": ["Gravimetrico"],
             },
             {
+                "key": "measurement_units",
+                "label": "Unidades de Medicao",
+                "description": "Unidades disponiveis para faixa de medicao no formulario",
+                "values": ["L", "dL", "cL", "mL", "\u00B5L", "dm\u00B3", "cm\u00B3", "mm\u00B3"],
+            },
+            {
                 "key": "temperature_standards",
                 "label": "Padroes de Temperatura",
                 "description": "Padroes de temperatura utilizados nas condicoes ambientais",

@@ -46,31 +46,41 @@ class DatabaseClient:
         stmt = text(
             """
             WITH next_item AS (
-                SELECT id
+                SELECT id, certificate_id
                 FROM processing_queue
                 WHERE status = :pending_status
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
+            ),
+            updated_queue AS (
+                UPDATE processing_queue AS pq
+                SET status = :processing_status,
+                    started_at = NOW(),
+                    worker_id = :worker_id,
+                    error_message = NULL
+                FROM next_item
+                WHERE pq.id = next_item.id
+                RETURNING
+                    pq.id,
+                    pq.certificate_id,
+                    pq.status,
+                    pq.retry_count,
+                    pq.max_retries,
+                    pq.error_message,
+                    pq.worker_id,
+                    pq.started_at,
+                    pq.completed_at,
+                    pq.created_at
+            ),
+            updated_certificate AS (
+                UPDATE certificates AS c
+                SET status = :certificate_processing_status
+                FROM next_item
+                WHERE c.id = next_item.certificate_id
             )
-            UPDATE processing_queue AS pq
-            SET status = :processing_status,
-                started_at = NOW(),
-                worker_id = :worker_id,
-                error_message = NULL
-            FROM next_item
-            WHERE pq.id = next_item.id
-            RETURNING
-                pq.id,
-                pq.certificate_id,
-                pq.status,
-                pq.retry_count,
-                pq.max_retries,
-                pq.error_message,
-                pq.worker_id,
-                pq.started_at,
-                pq.completed_at,
-                pq.created_at
+            SELECT *
+            FROM updated_queue
             """
         )
         with self._connection() as conn:
@@ -80,6 +90,7 @@ class DatabaseClient:
                     "worker_id": WORKER_ID,
                     "pending_status": self.QUEUE_STATUS["pending"],
                     "processing_status": self.QUEUE_STATUS["processing"],
+                    "certificate_processing_status": self.CERTIFICATE_STATUS["processing"],
                 },
             ).mappings().first()
             return dict(row) if row else None

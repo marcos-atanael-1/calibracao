@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
+from app.models.user import User
 from app.services.queue_service import QueueService
 from app.schemas.queue import QueueItemResponse, QueueUpdateRequest
 from app.schemas.common import APIResponse
@@ -52,3 +53,21 @@ def retry_queue_item(queue_id: UUID, db: Session = Depends(get_db)):
         data=QueueItemResponse.model_validate(item).model_dump(),
         message="Item reenviado para processamento",
     )
+
+
+@router.delete("/{queue_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_queue_item(
+    queue_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    QueueService.delete_queue_item(db, queue_id, current_user)
+
+
+@router.delete("/{queue_id}/certificate", status_code=status.HTTP_204_NO_CONTENT)
+def delete_queue_certificate(
+    queue_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    QueueService.delete_queue_certificate(db, queue_id, current_user)

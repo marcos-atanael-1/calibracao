@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import api from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 export default function Dashboard() {
+  const isMobile = useIsMobile()
   const [stats, setStats] = useState({ total: 0, draft: 0, queued: 0, processing: 0, done: 0, error: 0 })
   const [recent, setRecent] = useState([])
 
@@ -34,7 +36,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '20px' }}>
         {cards.map((card) => {
           const Icon = card.icon
           return (
@@ -81,8 +83,10 @@ export default function Dashboard() {
                 style={{
                   padding: '14px 24px',
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: isMobile ? 'flex-start' : 'center',
                   justifyContent: 'space-between',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  gap: isMobile ? '10px' : '0',
                   borderBottom: '1px solid #f9fafb',
                   transition: 'background 0.15s',
                   cursor: 'pointer',

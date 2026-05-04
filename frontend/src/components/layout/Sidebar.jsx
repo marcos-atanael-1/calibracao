@@ -1,31 +1,17 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  FileText,
-  Settings,
-  Bot,
-  Users,
-  SlidersHorizontal,
-} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/certificates', label: 'Certificados', icon: FileText },
-  { to: '/templates', label: 'Templates', icon: Settings },
-  { to: '/queue', label: 'Agente', icon: Bot },
-  { to: '/settings', label: 'Configurações', icon: SlidersHorizontal, adminOnly: true },
-  { to: '/users', label: 'Usuários', icon: Users, adminOnly: true },
-]
+import { getVisibleNavItems } from './navigation'
 
 export default function Sidebar({ collapsed }) {
   const { user } = useAuth()
   const location = useLocation()
+  const items = getVisibleNavItems(user?.role)
 
   const width = collapsed ? '68px' : '256px'
 
   return (
     <aside
+      className="desktop-sidebar"
       style={{
         position: 'fixed',
         left: 0,
@@ -85,47 +71,45 @@ export default function Sidebar({ collapsed }) {
           overflowY: 'auto',
         }}
       >
-        {navItems
-          .filter((item) => !item.adminOnly || user?.role === 'admin' || user?.role === 'super_admin')
-          .map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname === item.to ||
-              (item.to !== '/' && location.pathname.startsWith(item.to))
+        {items.map((item) => {
+          const Icon = item.icon
+          const isActive = location.pathname === item.to ||
+            (item.to !== '/' && location.pathname.startsWith(item.to))
 
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={collapsed ? item.label : undefined}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: collapsed ? '0' : '12px',
-                  padding: collapsed ? '10px' : '10px 12px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  transition: 'all 0.15s ease',
-                  color: isActive ? '#002868' : '#6b7280',
-                  background: isActive ? '#e8eef8' : 'transparent',
-                  borderLeft: isActive ? '3px solid #002868' : '3px solid transparent',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = '#f3f4f6'
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'transparent'
-                }}
-              >
-                <Icon style={{ width: '18px', height: '18px', flexShrink: 0 }} />
-                {!collapsed && item.label}
-              </NavLink>
-            )
-          })}
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              title={collapsed ? item.label : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: collapsed ? '0' : '12px',
+                padding: collapsed ? '10px' : '10px 12px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 500,
+                textDecoration: 'none',
+                transition: 'all 0.15s ease',
+                color: isActive ? '#002868' : '#6b7280',
+                background: isActive ? '#e8eef8' : 'transparent',
+                borderLeft: isActive ? '3px solid #002868' : '3px solid transparent',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.background = '#f3f4f6'
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              <Icon style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+              {!collapsed && item.label}
+            </NavLink>
+          )
+        })}
       </nav>
     </aside>
   )

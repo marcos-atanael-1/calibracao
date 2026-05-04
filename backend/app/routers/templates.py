@@ -1,9 +1,11 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
 from app.services.template_service import TemplateService
+from app.services.openai_template_service import OpenAITemplateService
+from app.models.user import User
 from app.schemas.template import (
     TemplateCreate, TemplateUpdate, TemplateResponse, TemplateListResponse,
     TemplateFieldCreate, TemplateFieldUpdate, TemplateFieldResponse,
@@ -40,6 +42,26 @@ def create_template(data: TemplateCreate, db: Session = Depends(get_db)):
         data=TemplateResponse.model_validate(template).model_dump(),
         message="Template criado com sucesso",
     )
+
+
+@router.post("/ai-extract-fields", response_model=APIResponse)
+async def ai_extract_template_fields(
+    workbook_context: str | None = Form(default=None),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    file_payloads = []
+    for file in files:
+        file_payloads.append((file.filename or "image.png", await file.read()))
+
+    data = OpenAITemplateService.extract_fields_from_images(
+        db=db,
+        current_user=current_user,
+        files=file_payloads,
+        workbook_context=workbook_context,
+    )
+    return APIResponse(data=data, message="Campos sugeridos pela IA")
 
 
 @router.put("/{template_id}", response_model=APIResponse)

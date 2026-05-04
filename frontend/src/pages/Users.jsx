@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, KeyRound, X, UserPlus } from 'lucide-react'
+import { Edit2, Trash2, KeyRound, X, UserPlus } from 'lucide-react'
 import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
+import useIsMobile from '../hooks/useIsMobile'
 
 const roleLabels = {
   super_admin: { label: 'Super Admin', bg: '#e8eef8', color: '#002868' },
   admin: { label: 'Admin', bg: '#dbeafe', color: '#1d4ed8' },
-  tecnico: { label: 'Técnico', bg: '#f3f4f6', color: '#4b5563' },
+  tecnico: { label: 'Tecnico', bg: '#f3f4f6', color: '#4b5563' },
 }
 
 const modalOverlay = {
@@ -13,102 +15,169 @@ const modalOverlay = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
 }
 
-const modalBox = {
-  background: '#ffffff', borderRadius: '16px', padding: '28px',
-  width: '100%', maxWidth: '440px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+const baseModalBox = {
+  background: '#ffffff',
+  borderRadius: '16px',
+  width: '100%',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
 }
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth()
+  const isMobile = useIsMobile()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [editUser, setEditUser] = useState(null)
   const [resetUser, setResetUser] = useState(null)
 
-  // Form states
   const [formName, setFormName] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('tecnico')
   const [resetPassword, setResetPassword] = useState('')
 
+  const canManageSuperAdmin = currentUser?.role === 'super_admin'
+  const allowedRoleOptions = canManageSuperAdmin ? ['tecnico', 'admin', 'super_admin'] : ['tecnico', 'admin']
+
   useEffect(() => { load() }, [])
 
   const load = async () => {
-    try { const { data } = await api.get('/users'); setUsers(data.data || []) }
-    catch(e) {} finally { setLoading(false) }
+    try {
+      const { data } = await api.get('/users')
+      setUsers(data.data || [])
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao carregar usuarios')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isProtectedUser = (targetUser) => !canManageSuperAdmin && targetUser?.role === 'super_admin'
+
+  const resetCreateForm = () => {
+    setFormName('')
+    setFormEmail('')
+    setFormPassword('')
+    setFormRole('tecnico')
   }
 
   const openCreate = () => {
-    setFormName(''); setFormEmail(''); setFormPassword(''); setFormRole('tecnico')
+    resetCreateForm()
     setShowCreate(true)
   }
 
-  const openEdit = (u) => {
-    setFormName(u.name); setFormEmail(u.email); setFormRole(u.role)
-    setEditUser(u)
+  const openEdit = (targetUser) => {
+    if (isProtectedUser(targetUser)) {
+      alert('Admin nao pode gerenciar usuarios super admin')
+      return
+    }
+    setFormName(targetUser.name)
+    setFormEmail(targetUser.email)
+    setFormRole(targetUser.role)
+    setEditUser(targetUser)
   }
 
   const handleCreate = async (e) => {
     e.preventDefault()
     try {
       await api.post('/users', { name: formName, email: formEmail, password: formPassword, role: formRole })
-      setShowCreate(false); load()
-    } catch(e) { alert(e.response?.data?.detail || 'Erro ao criar') }
+      setShowCreate(false)
+      resetCreateForm()
+      load()
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao criar usuario')
+    }
   }
 
   const handleEdit = async (e) => {
     e.preventDefault()
     try {
       await api.put(`/users/${editUser.id}`, { name: formName, email: formEmail, role: formRole })
-      setEditUser(null); load()
-    } catch(e) { alert(e.response?.data?.detail || 'Erro ao atualizar') }
+      setEditUser(null)
+      load()
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao atualizar usuario')
+    }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Deseja excluir este usuário?')) return
-    try { await api.delete(`/users/${id}`); load() }
-    catch(e) { alert(e.response?.data?.detail || 'Erro ao excluir') }
+  const handleDelete = async (targetUser) => {
+    if (isProtectedUser(targetUser)) {
+      alert('Admin nao pode excluir usuarios super admin')
+      return
+    }
+    if (!confirm('Deseja excluir este usuario?')) return
+    try {
+      await api.delete(`/users/${targetUser.id}`)
+      load()
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao excluir usuario')
+    }
   }
 
   const handleResetPassword = async (e) => {
     e.preventDefault()
     try {
       await api.post(`/users/${resetUser.id}/reset-password`, { new_password: resetPassword })
-      setResetUser(null); setResetPassword('')
-      alert('Senha redefinida! O usuário deverá trocar no próximo login.')
-    } catch(e) { alert(e.response?.data?.detail || 'Erro') }
+      setResetUser(null)
+      setResetPassword('')
+      alert('Senha redefinida. O usuario devera trocar no proximo login.')
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao resetar senha')
+    }
   }
 
-  const handleToggleActive = async (u) => {
+  const handleToggleActive = async (targetUser) => {
+    if (isProtectedUser(targetUser)) {
+      alert('Admin nao pode alterar usuarios super admin')
+      return
+    }
     try {
-      await api.put(`/users/${u.id}`, { is_active: !u.is_active })
+      await api.put(`/users/${targetUser.id}`, { is_active: !targetUser.is_active })
       load()
-    } catch(e) { alert('Erro ao alterar status') }
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao alterar status')
+    }
+  }
+
+  const modalBox = {
+    ...baseModalBox,
+    maxWidth: isMobile ? 'calc(100vw - 24px)' : '440px',
+    padding: isMobile ? '20px' : '28px',
+    margin: isMobile ? '12px' : '0',
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <p style={{ fontSize: '14px', color: '#6b7280' }}>{users.length} usuário(s) cadastrado(s)</p>
-        <button onClick={openCreate} className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}>
-          <UserPlus style={{ width: '16px', height: '16px' }} /> Novo Usuário
+      <div style={{ display: 'flex', alignItems: isMobile ? 'stretch' : 'center', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', gap: '12px' }}>
+        <p style={{ fontSize: '14px', color: '#6b7280' }}>{users.length} usuario(s) cadastrado(s)</p>
+        <button
+          onClick={openCreate}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px', width: isMobile ? '100%' : 'auto' }}
+        >
+          <UserPlus style={{ width: '16px', height: '16px' }} /> Novo Usuario
         </button>
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="card table-scroll" style={{ overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
           <thead>
             <tr style={{ background: '#fafafa' }}>
-              {['NOME', 'E-MAIL', 'FUNÇÃO', 'STATUS', 'AÇÕES'].map(h => (
-                <th key={h} style={{
-                  textAlign: h === 'AÇÕES' ? 'right' : 'left',
-                  padding: '12px 24px', fontSize: '11px', fontWeight: 600,
-                  color: '#6b7280', letterSpacing: '0.05em',
-                }}>{h}</th>
+              {['NOME', 'E-MAIL', 'FUNCAO', 'STATUS', 'ACOES'].map((heading) => (
+                <th
+                  key={heading}
+                  style={{
+                    textAlign: heading === 'ACOES' ? 'right' : 'left',
+                    padding: '12px 24px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#6b7280',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {heading}
+                </th>
               ))}
             </tr>
           </thead>
@@ -116,55 +185,65 @@ export default function UsersPage() {
             {loading ? (
               <tr><td colSpan={5} style={{ padding: '48px', textAlign: 'center', fontSize: '14px', color: '#9ca3af' }}>Carregando...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '48px', textAlign: 'center' }}>
-                <p style={{ fontSize: '14px', color: '#9ca3af' }}>Nenhum usuário cadastrado</p>
-              </td></tr>
-            ) : users.map(u => {
-              const r = roleLabels[u.role] || roleLabels.tecnico
+              <tr><td colSpan={5} style={{ padding: '48px', textAlign: 'center', fontSize: '14px', color: '#9ca3af' }}>Nenhum usuario cadastrado</td></tr>
+            ) : users.map((targetUser) => {
+              const roleMeta = roleLabels[targetUser.role] || roleLabels.tecnico
+              const protectedUser = isProtectedUser(targetUser)
+
               return (
-                <tr key={u.id} style={{ borderTop: '1px solid #f3f4f6' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <tr
+                  key={targetUser.id}
+                  style={{ borderTop: '1px solid #f3f4f6' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#fafafa' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
                   <td style={{ padding: '14px 24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '50%', background: '#e8eef8',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '12px', fontWeight: 600, color: '#002868',
-                      }}>
-                        {u.name?.charAt(0)?.toUpperCase()}
+                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e8eef8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, color: '#002868' }}>
+                        {targetUser.name?.charAt(0)?.toUpperCase()}
                       </div>
                       <div>
-                        <p style={{ fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>{u.name}</p>
-                        {u.must_change_password && (
-                          <p style={{ fontSize: '11px', color: '#d97706', marginTop: '2px' }}>⚠ Deve trocar senha</p>
+                        <p style={{ fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>{targetUser.name}</p>
+                        {targetUser.must_change_password && (
+                          <p style={{ fontSize: '11px', color: '#d97706', marginTop: '2px' }}>Deve trocar senha</p>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '14px 24px', fontSize: '14px', color: '#6b7280' }}>{u.email}</td>
+                  <td style={{ padding: '14px 24px', fontSize: '14px', color: '#6b7280' }}>{targetUser.email}</td>
                   <td style={{ padding: '14px 24px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 500, padding: '3px 10px', borderRadius: '9999px', background: r.bg, color: r.color }}>{r.label}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 500, padding: '3px 10px', borderRadius: '9999px', background: roleMeta.bg, color: roleMeta.color }}>
+                      {roleMeta.label}
+                    </span>
                   </td>
                   <td style={{ padding: '14px 24px' }}>
-                    <button onClick={() => handleToggleActive(u)} style={{
-                      fontSize: '12px', fontWeight: 500, padding: '3px 10px', borderRadius: '9999px',
-                      background: u.is_active ? '#d1fae5' : '#fee2e2',
-                      color: u.is_active ? '#047857' : '#dc2626',
-                      border: 'none', cursor: 'pointer',
-                    }}>
-                      {u.is_active ? 'Ativo' : 'Inativo'}
+                    <button
+                      onClick={() => handleToggleActive(targetUser)}
+                      disabled={protectedUser}
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        padding: '3px 10px',
+                        borderRadius: '9999px',
+                        background: targetUser.is_active ? '#d1fae5' : '#fee2e2',
+                        color: targetUser.is_active ? '#047857' : '#dc2626',
+                        border: 'none',
+                        cursor: protectedUser ? 'not-allowed' : 'pointer',
+                        opacity: protectedUser ? 0.55 : 1,
+                      }}
+                    >
+                      {targetUser.is_active ? 'Ativo' : 'Inativo'}
                     </button>
                   </td>
                   <td style={{ padding: '14px 24px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                      <button onClick={() => openEdit(u)} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280' }} title="Editar">
+                      <button disabled={protectedUser} onClick={() => openEdit(targetUser)} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: protectedUser ? 'not-allowed' : 'pointer', color: '#6b7280', opacity: protectedUser ? 0.45 : 1 }} title="Editar">
                         <Edit2 style={{ width: '15px', height: '15px' }} />
                       </button>
-                      <button onClick={() => { setResetUser(u); setResetPassword('') }} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#d97706' }} title="Resetar senha">
+                      <button disabled={protectedUser} onClick={() => { setResetUser(targetUser); setResetPassword('') }} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: protectedUser ? 'not-allowed' : 'pointer', color: '#d97706', opacity: protectedUser ? 0.45 : 1 }} title="Resetar senha">
                         <KeyRound style={{ width: '15px', height: '15px' }} />
                       </button>
-                      <button onClick={() => handleDelete(u.id)} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc2626' }} title="Excluir">
+                      <button disabled={protectedUser} onClick={() => handleDelete(targetUser)} style={{ padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: protectedUser ? 'not-allowed' : 'pointer', color: '#dc2626', opacity: protectedUser ? 0.45 : 1 }} title="Excluir">
                         <Trash2 style={{ width: '15px', height: '15px' }} />
                       </button>
                     </div>
@@ -176,12 +255,11 @@ export default function UsersPage() {
         </table>
       </div>
 
-      {/* Create Modal */}
       {showCreate && (
         <div style={modalOverlay} onClick={() => setShowCreate(false)}>
           <div style={modalBox} className="animate-fade-in" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>Novo Usuário</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>Novo Usuario</h3>
               <button onClick={() => setShowCreate(false)} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -197,29 +275,27 @@ export default function UsersPage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Senha inicial *</label>
-                <input type="text" value={formPassword} onChange={e => setFormPassword(e.target.value)} required className="input-field" placeholder="Senha temporária" />
-                <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>O usuário será obrigado a trocar no primeiro login</p>
+                <input type="text" value={formPassword} onChange={e => setFormPassword(e.target.value)} required className="input-field" placeholder="Senha temporaria" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Função</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Funcao</label>
                 <select value={formRole} onChange={e => setFormRole(e.target.value)} className="input-field">
-                  <option value="tecnico">Técnico</option>
-                  <option value="admin">Admin</option>
-                  <option value="super_admin">Super Admin</option>
+                  {allowedRoleOptions.map((role) => (
+                    <option key={role} value={role}>{roleLabels[role].label}</option>
+                  ))}
                 </select>
               </div>
-              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%', marginTop: '4px' }}>Criar Usuário</button>
+              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%' }}>Criar Usuario</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Edit Modal */}
       {editUser && (
         <div style={modalOverlay} onClick={() => setEditUser(null)}>
           <div style={modalBox} className="animate-fade-in" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>Editar Usuário</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>Editar Usuario</h3>
               <button onClick={() => setEditUser(null)} style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -234,20 +310,19 @@ export default function UsersPage() {
                 <input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} required className="input-field" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Função</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Funcao</label>
                 <select value={formRole} onChange={e => setFormRole(e.target.value)} className="input-field">
-                  <option value="tecnico">Técnico</option>
-                  <option value="admin">Admin</option>
-                  <option value="super_admin">Super Admin</option>
+                  {allowedRoleOptions.map((role) => (
+                    <option key={role} value={role}>{roleLabels[role].label}</option>
+                  ))}
                 </select>
               </div>
-              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%', marginTop: '4px' }}>Salvar Alterações</button>
+              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%' }}>Salvar Alteracoes</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Reset Password Modal */}
       {resetUser && (
         <div style={modalOverlay} onClick={() => setResetUser(null)}>
           <div style={modalBox} className="animate-fade-in" onClick={e => e.stopPropagation()}>
@@ -258,15 +333,14 @@ export default function UsersPage() {
               </button>
             </div>
             <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
-              Definir nova senha para <strong>{resetUser.name}</strong> ({resetUser.email}).
-              O usuário será obrigado a trocar no próximo login.
+              Definir nova senha para <strong>{resetUser.name}</strong>.
             </p>
             <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Nova senha temporária *</label>
-                <input type="text" value={resetPassword} onChange={e => setResetPassword(e.target.value)} required className="input-field" placeholder="Senha temporária" />
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Nova senha temporaria *</label>
+                <input type="text" value={resetPassword} onChange={e => setResetPassword(e.target.value)} required className="input-field" placeholder="Senha temporaria" />
               </div>
-              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%', marginTop: '4px', background: '#d97706' }}>Resetar Senha</button>
+              <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%', background: '#d97706' }}>Resetar Senha</button>
             </form>
           </div>
         </div>

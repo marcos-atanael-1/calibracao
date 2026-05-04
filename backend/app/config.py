@@ -1,6 +1,8 @@
-from pydantic_settings import BaseSettings
-from typing import List
 import json
+from typing import List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -27,6 +29,18 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str = "placeholder-openai-key"
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def normalize_debug_value(cls, value):
+        if isinstance(value, bool):
+            return value
+        normalized = str(value or "").strip().lower()
+        if normalized in {"1", "true", "yes", "on", "debug", "dev", "development"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
+            return False
+        return value
 
     @property
     def cors_origins_list(self) -> List[str]:

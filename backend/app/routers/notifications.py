@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
@@ -15,16 +16,34 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 @router.get("", response_model=APIResponse)
 def list_notifications(
-    limit: int = Query(10, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, min_length=1, max_length=255),
+    is_read: bool | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = (
-        db.query(Notification)
-        .filter(Notification.user_id == current_user.id)
-        .order_by(Notification.created_at.desc())
+    query = db.query(Notification).filter(Notification.user_id == current_user.id)
+
+    if is_read is not None:
+        query = query.filter(Notification.is_read.is_(is_read))
+
+    if search:
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Notification.title.ilike(search_term),
+                Notification.message.ilike(search_term),
+            )
+        )
+
+    total = query.count()
+    items = (
+        query.order_by(Notification.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
     )
-    items = query.limit(limit).all()
     unread_count = (
         db.query(Notification)
         .filter(Notification.user_id == current_user.id, Notification.is_read.is_(False))
@@ -32,7 +51,13 @@ def list_notifications(
     )
     return APIResponse(
         data=[NotificationResponse.model_validate(item).model_dump() for item in items],
-        meta={"unread_count": unread_count},
+        meta={
+            "unread_count": unread_count,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "search": search or "",
+        },
     )
 
 

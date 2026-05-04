@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Settings, Trash2, Save, Pencil, X } from 'lucide-react'
+import { Plus, Settings, Trash2, Save, Pencil, X, Sparkles, Upload, Wand2 } from 'lucide-react'
 import api from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 const emptyFieldForm = {
   field_key: '',
@@ -9,6 +10,7 @@ const emptyFieldForm = {
   excel_cell_ref: '',
   is_required: false,
   display_order: 1,
+  options: null,
 }
 
 const emptyTemplateConfig = {
@@ -27,18 +29,57 @@ const fieldLabelStyle = {
   marginBottom: '6px',
 }
 
+const cardStyle = {
+  borderRadius: '18px',
+  border: '1px solid #e5e7eb',
+  background: '#ffffff',
+  boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
+}
+
+function buildCreateTemplatePayload(basic, fields) {
+  return {
+    name: basic.name,
+    description: basic.description || null,
+    excel_template_path: basic.excel_template_path || null,
+    default_config: {
+      input_sheet: basic.default_config.input_sheet || 'Dados',
+      output_sheet: basic.default_config.output_sheet || 'Certificado',
+      points_sheet: basic.default_config.points_sheet || 'Resultados - 1',
+      post_fill_macros: (basic.default_config.post_fill_macros || 'Formcert')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    },
+    fields: fields.map((field, index) => ({
+      field_key: field.field_key,
+      label: field.label,
+      field_type: field.field_type || 'text',
+      excel_cell_ref: field.excel_cell_ref || null,
+      display_order: Number(field.display_order) || index + 1,
+      is_required: !!field.is_required,
+      options: field.options || null,
+    })),
+  }
+}
+
 export default function Templates() {
+  const isMobile = useIsMobile()
   const [templates, setTemplates] = useState([])
   const [selected, setSelected] = useState(null)
-  const [showForm, setShowForm] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [name, setName] = useState('')
-  const [desc, setDesc] = useState('')
-  const [excelPath, setExcelPath] = useState('')
   const [fieldForm, setFieldForm] = useState(null)
   const [editingFieldId, setEditingFieldId] = useState(null)
   const [editingFieldForm, setEditingFieldForm] = useState(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createStep, setCreateStep] = useState(1)
+  const [createMode, setCreateMode] = useState('manual')
+  const [creatingTemplate, setCreatingTemplate] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiContext, setAiContext] = useState('')
+  const [aiFiles, setAiFiles] = useState([])
+  const [aiNotes, setAiNotes] = useState([])
+
   const [templateForm, setTemplateForm] = useState({
     name: '',
     description: '',
@@ -46,6 +87,20 @@ export default function Templates() {
     is_active: true,
     default_config: emptyTemplateConfig,
   })
+
+  const [createTemplateForm, setCreateTemplateForm] = useState({
+    name: '',
+    description: '',
+    excel_template_path: '',
+    default_config: {
+      input_sheet: 'Dados',
+      output_sheet: 'Certificado',
+      points_sheet: 'Resultados - 1',
+      post_fill_macros: 'Formcert',
+    },
+  })
+
+  const [createFields, setCreateFields] = useState([])
 
   useEffect(() => { load() }, [])
 
@@ -78,28 +133,34 @@ export default function Templates() {
     })
   }
 
-  const createTemplate = async (e) => {
-    e.preventDefault()
-    try {
-      await api.post('/templates', {
-        name,
-        description: desc,
-        excel_template_path: excelPath,
-        default_config: {
-          input_sheet: 'Dados',
-          output_sheet: 'Certificado',
-          points_sheet: 'Resultados - 1',
-          post_fill_macros: ['Formcert'],
-        },
-      })
-      setShowForm(false)
-      setName('')
-      setDesc('')
-      setExcelPath('')
-      load()
-    } catch (e) {
-      alert(e.response?.data?.detail || 'Erro')
-    }
+  const resetCreateModal = () => {
+    setCreateStep(1)
+    setCreateMode('manual')
+    setCreateFields([])
+    setAiContext('')
+    setAiFiles([])
+    setAiNotes([])
+    setCreateTemplateForm({
+      name: '',
+      description: '',
+      excel_template_path: '',
+      default_config: {
+        input_sheet: 'Dados',
+        output_sheet: 'Certificado',
+        points_sheet: 'Resultados - 1',
+        post_fill_macros: 'Formcert',
+      },
+    })
+  }
+
+  const openCreateModal = () => {
+    resetCreateModal()
+    setShowCreateModal(true)
+  }
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false)
+    resetCreateModal()
   }
 
   const selectTemplate = async (id) => {
@@ -131,20 +192,20 @@ export default function Templates() {
           }
 
           return {
-        name: templateForm.name,
-        description: templateForm.description,
-        excel_template_path: templateForm.excel_template_path,
-        is_active: templateForm.is_active,
-        default_config: {
-          input_sheet: templateForm.default_config.input_sheet || null,
-          output_sheet: templateForm.default_config.output_sheet || null,
-          points_sheet: templateForm.default_config.points_sheet || null,
-          post_fill_macros: templateForm.default_config.post_fill_macros
-            .split(',')
-            .map(item => item.trim())
-            .filter(Boolean),
-          results_mapping: resultsMapping,
-        },
+            name: templateForm.name,
+            description: templateForm.description,
+            excel_template_path: templateForm.excel_template_path,
+            is_active: templateForm.is_active,
+            default_config: {
+              input_sheet: templateForm.default_config.input_sheet || null,
+              output_sheet: templateForm.default_config.output_sheet || null,
+              points_sheet: templateForm.default_config.points_sheet || null,
+              post_fill_macros: (templateForm.default_config.post_fill_macros || '')
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean),
+              results_mapping: resultsMapping,
+            },
           }
         })(),
       })
@@ -154,6 +215,23 @@ export default function Templates() {
       alert(e.response?.data?.detail || e.message || 'Erro ao salvar template')
     } finally {
       setSavingTemplate(false)
+    }
+  }
+
+  const createTemplate = async () => {
+    setCreatingTemplate(true)
+    try {
+      const payload = buildCreateTemplatePayload(createTemplateForm, createFields)
+      const { data } = await api.post('/templates', payload)
+      closeCreateModal()
+      await load()
+      if (data?.data?.id) {
+        await selectTemplate(data.data.id)
+      }
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao criar template')
+    } finally {
+      setCreatingTemplate(false)
     }
   }
 
@@ -222,33 +300,60 @@ export default function Templates() {
     }
   }
 
+  const addCreateField = () => {
+    setCreateFields((prev) => [
+      ...prev,
+      { ...emptyFieldForm, display_order: prev.length + 1 },
+    ])
+  }
+
+  const updateCreateField = (index, patch) => {
+    setCreateFields((prev) => prev.map((field, idx) => (
+      idx === index ? { ...field, ...patch } : field
+    )))
+  }
+
+  const removeCreateField = (index) => {
+    setCreateFields((prev) => prev.filter((_, idx) => idx !== index).map((field, idx) => ({ ...field, display_order: idx + 1 })))
+  }
+
+  const runAIFieldExtraction = async () => {
+    if (aiFiles.length === 0) {
+      alert('Envie pelo menos uma imagem da planilha')
+      return
+    }
+    setAiLoading(true)
+    try {
+      const formData = new FormData()
+      aiFiles.forEach((file) => formData.append('files', file))
+      formData.append('workbook_context', aiContext)
+      const { data } = await api.post('/templates/ai-extract-fields', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setCreateFields((data.data?.fields || []).map((field, index) => ({
+        ...emptyFieldForm,
+        ...field,
+        display_order: field.display_order || index + 1,
+      })))
+      setAiNotes(data.data?.notes || [])
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao extrair campos com IA')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const modalWidth = isMobile ? 'calc(100vw - 20px)' : '980px'
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '24px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#111827' }}>Templates</h3>
-          <button onClick={() => setShowForm(!showForm)} className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button onClick={openCreateModal} className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus style={{ width: '14px', height: '14px' }} /> Novo
           </button>
         </div>
-
-        {showForm && (
-          <form onSubmit={createTemplate} className="card animate-fade-in" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label style={fieldLabelStyle}>Nome do template</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Certificado de Volume POC" required className="input-field" />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Descricao</label>
-              <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Resumo do template" className="input-field" />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Caminho da planilha</label>
-              <input type="text" value={excelPath} onChange={e => setExcelPath(e.target.value)} placeholder="Ex: Copy of Certificado de Volume-CVM-VOL-001 Rev.73.xlsm" className="input-field" />
-            </div>
-            <button type="submit" className="btn-primary" style={{ padding: '10px', width: '100%' }}>Criar</button>
-          </form>
-        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {templates.map(t => (
@@ -280,7 +385,7 @@ export default function Templates() {
                 <Settings style={{ width: '16px', height: '16px', color: '#9ca3af' }} />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={fieldLabelStyle}>Nome do template</label>
                   <input className="input-field" value={templateForm.name} onChange={e => setTemplateForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome do template" />
@@ -303,7 +408,7 @@ export default function Templates() {
 
               <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid #eef2f7', background: '#fafbfd' }}>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '12px' }}>Configuracao do agente</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={fieldLabelStyle}>Aba de entrada</label>
                     <input className="input-field" value={templateForm.default_config.input_sheet} onChange={e => setTemplateForm(prev => ({ ...prev, default_config: { ...prev.default_config, input_sheet: e.target.value } }))} placeholder="Ex: Dados" />
@@ -334,11 +439,11 @@ export default function Templates() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                <button onClick={() => setShowDeleteModal(true)} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fff1f2', color: '#be123c', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexDirection: isMobile ? 'column' : 'row' }}>
+                <button onClick={() => setShowDeleteModal(true)} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fff1f2', color: '#be123c', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   <Trash2 style={{ width: '14px', height: '14px' }} /> Excluir Template
                 </button>
-                <button onClick={saveTemplate} disabled={savingTemplate} className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button onClick={saveTemplate} disabled={savingTemplate} className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   <Save style={{ width: '14px', height: '14px' }} /> {savingTemplate ? 'Salvando...' : 'Salvar Template'}
                 </button>
               </div>
@@ -358,7 +463,7 @@ export default function Templates() {
 
               {fieldForm && (
                 <form onSubmit={addField} className="animate-fade-in" style={{ padding: '16px 24px', borderBottom: '1px solid #f3f4f6', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '12px' }}>
                     <div>
                       <label style={fieldLabelStyle}>Chave</label>
                       <input type="text" value={fieldForm.field_key} onChange={e => setFieldForm({ ...fieldForm, field_key: e.target.value })} placeholder="Ex: contratante" required className="input-field" />
@@ -430,7 +535,7 @@ export default function Templates() {
                     </div>
 
                     {isEditing ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 0.8fr 0.8fr 1.4fr', gap: '10px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.2fr 0.8fr 0.8fr 1.4fr', gap: '10px' }}>
                         <div>
                           <label style={fieldLabelStyle}>Chave</label>
                           <input className="input-field" value={activeForm.field_key} onChange={e => setEditingFieldForm(prev => ({ ...prev, field_key: e.target.value }))} />
@@ -478,6 +583,258 @@ export default function Templates() {
         )}
       </div>
 
+      {showCreateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: isMobile ? '10px' : '24px' }}>
+          <div className="animate-fade-in" style={{ width: '100%', maxWidth: modalWidth, maxHeight: '90vh', overflow: 'auto', background: '#ffffff', borderRadius: '22px', border: '1px solid #e5e7eb', boxShadow: '0 30px 80px rgba(15, 23, 42, 0.28)' }}>
+            <div style={{ padding: isMobile ? '18px' : '24px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+              <div>
+                <p style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Novo Template</p>
+                <h3 style={{ marginTop: '8px', fontSize: isMobile ? '22px' : '26px', fontWeight: 700, color: '#0f172a' }}>
+                  {createStep === 1 ? 'Dados basicos do template' : 'Definicao dos campos'}
+                </h3>
+              </div>
+              <button onClick={closeCreateModal} style={{ border: 'none', background: '#f8fafc', width: '38px', height: '38px', borderRadius: '12px', cursor: 'pointer', color: '#64748b' }}>
+                <X style={{ width: '18px', height: '18px', margin: '0 auto' }} />
+              </button>
+            </div>
+
+            <div style={{ padding: isMobile ? '18px' : '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {[1, 2].map((step) => (
+                  <div key={step} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: createStep === step ? '#002868' : '#e2e8f0', color: createStep === step ? '#ffffff' : '#475569', fontSize: '13px', fontWeight: 700 }}>
+                      {step}
+                    </div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: createStep === step ? '#0f172a' : '#64748b' }}>
+                      {step === 1 ? 'Dados do template' : 'Campos'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {createStep === 1 && (
+                <div style={{ ...cardStyle, padding: isMobile ? '18px' : '22px', display: 'grid', gap: '14px' }}>
+                  <div>
+                    <label style={fieldLabelStyle}>Nome do template</label>
+                    <input className="input-field" value={createTemplateForm.name} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Ex: Certificado de Volume POC" />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Descricao</label>
+                    <input className="input-field" value={createTemplateForm.description} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Resumo do template" />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>Caminho da planilha</label>
+                    <input className="input-field" value={createTemplateForm.excel_template_path} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, excel_template_path: e.target.value }))} placeholder="Ex: Copy of Certificado..." />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={fieldLabelStyle}>Aba de entrada</label>
+                      <input className="input-field" value={createTemplateForm.default_config.input_sheet} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, default_config: { ...prev.default_config, input_sheet: e.target.value } }))} />
+                    </div>
+                    <div>
+                      <label style={fieldLabelStyle}>Aba de saida</label>
+                      <input className="input-field" value={createTemplateForm.default_config.output_sheet} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, default_config: { ...prev.default_config, output_sheet: e.target.value } }))} />
+                    </div>
+                    <div>
+                      <label style={fieldLabelStyle}>Aba de pontos</label>
+                      <input className="input-field" value={createTemplateForm.default_config.points_sheet} onChange={(e) => setCreateTemplateForm((prev) => ({ ...prev, default_config: { ...prev.default_config, points_sheet: e.target.value } }))} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {createStep === 2 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ ...cardStyle, padding: isMobile ? '18px' : '22px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexDirection: isMobile ? 'column' : 'row' }}>
+                      <button
+                        type="button"
+                        onClick={() => setCreateMode('manual')}
+                        style={{
+                          flex: 1,
+                          borderRadius: '14px',
+                          border: `1px solid ${createMode === 'manual' ? '#bfd4ff' : '#e5e7eb'}`,
+                          background: createMode === 'manual' ? '#eef4ff' : '#ffffff',
+                          padding: '16px',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700 }}>
+                          <Plus style={{ width: '16px', height: '16px' }} />
+                          Criar manualmente
+                        </div>
+                        <p style={{ marginTop: '6px', fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>
+                          Voce adiciona os campos um a um e monta o template manualmente.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCreateMode('ai')}
+                        style={{
+                          flex: 1,
+                          borderRadius: '14px',
+                          border: `1px solid ${createMode === 'ai' ? '#c7d2fe' : '#e5e7eb'}`,
+                          background: createMode === 'ai' ? '#f5f3ff' : '#ffffff',
+                          padding: '16px',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700 }}>
+                          <Sparkles style={{ width: '16px', height: '16px' }} />
+                          Usar IA
+                        </div>
+                        <p style={{ marginTop: '6px', fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>
+                          Envie prints da planilha para a IA sugerir os campos e pre-preencher a estrutura.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {createMode === 'ai' && (
+                    <div style={{ ...cardStyle, padding: isMobile ? '18px' : '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div>
+                        <label style={fieldLabelStyle}>Imagens da planilha</label>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          multiple
+                          onChange={(e) => setAiFiles(Array.from(e.target.files || []))}
+                          className="input-field"
+                        />
+                        <p style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                          Dica: envie imagens mostrando abas do Excel, letras das colunas, numeros das linhas e os blocos de campos.
+                        </p>
+                      </div>
+                      <div>
+                        <label style={fieldLabelStyle}>Contexto opcional para a IA</label>
+                        <textarea
+                          className="input-field"
+                          rows={4}
+                          value={aiContext}
+                          onChange={(e) => setAiContext(e.target.value)}
+                          placeholder="Ex: a aba principal se chama Dados, o certificado final sai na aba Certificado, existem campos do cliente, instrumento e condicoes ambientais..."
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <button type="button" onClick={runAIFieldExtraction} className="btn-primary" disabled={aiLoading} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}>
+                          {aiLoading ? <Wand2 style={{ width: '15px', height: '15px' }} /> : <Upload style={{ width: '15px', height: '15px' }} />}
+                          {aiLoading ? 'Analisando imagens...' : 'Analisar com IA'}
+                        </button>
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>{aiFiles.length} arquivo(s) selecionado(s)</span>
+                      </div>
+                      {aiNotes.length > 0 && (
+                        <div style={{ padding: '14px 16px', borderRadius: '14px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                          <p style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>Observacoes da IA</p>
+                          <ul style={{ paddingLeft: '18px', color: '#64748b', fontSize: '13px', lineHeight: 1.7 }}>
+                            {aiNotes.map((note, index) => <li key={index}>{note}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="card" style={{ overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
+                      <div>
+                        <p style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Campos do novo template</p>
+                        <p style={{ marginTop: '4px', fontSize: '12px', color: '#64748b' }}>A IA so preenche sugestoes. Voce ainda pode revisar tudo aqui.</p>
+                      </div>
+                      <button onClick={addCreateField} className="btn-primary" style={{ padding: '8px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Plus style={{ width: '14px', height: '14px' }} /> Campo
+                      </button>
+                    </div>
+
+                    {createFields.length === 0 ? (
+                      <div style={{ padding: '28px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                        Nenhum campo adicionado ainda.
+                      </div>
+                    ) : (
+                      createFields.map((field, index) => (
+                        <div key={`${field.field_key}-${index}`} style={{ padding: '16px 20px', borderBottom: '1px solid #f8fafc', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                            <p style={{ fontSize: '13px', fontWeight: 700, color: '#334155' }}>Campo {index + 1}</p>
+                            <button type="button" onClick={() => removeCreateField(index)} style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer' }}>
+                              <Trash2 style={{ width: '15px', height: '15px' }} />
+                            </button>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.2fr 0.8fr 0.8fr 1.2fr', gap: '10px' }}>
+                            <div>
+                              <label style={fieldLabelStyle}>Chave</label>
+                              <input className="input-field" value={field.field_key} onChange={(e) => updateCreateField(index, { field_key: e.target.value })} />
+                            </div>
+                            <div>
+                              <label style={fieldLabelStyle}>Titulo visivel</label>
+                              <input className="input-field" value={field.label} onChange={(e) => updateCreateField(index, { label: e.target.value })} />
+                            </div>
+                            <div>
+                              <label style={fieldLabelStyle}>Tipo</label>
+                              <select className="input-field" value={field.field_type} onChange={(e) => updateCreateField(index, { field_type: e.target.value })}>
+                                <option value="text">Texto</option>
+                                <option value="number">Numero</option>
+                                <option value="date">Data</option>
+                                <option value="select">Selecao</option>
+                                <option value="textarea">Texto longo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={fieldLabelStyle}>Ordem</label>
+                              <input className="input-field" type="number" value={field.display_order} onChange={(e) => updateCreateField(index, { display_order: Number(e.target.value) || 0 })} />
+                            </div>
+                            <div>
+                              <label style={fieldLabelStyle}>Referencia Excel</label>
+                              <input className="input-field" value={field.excel_cell_ref || ''} onChange={(e) => updateCreateField(index, { excel_cell_ref: e.target.value })} />
+                            </div>
+                          </div>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#4b5563' }}>
+                            <input type="checkbox" checked={field.is_required} onChange={(e) => updateCreateField(index, { is_required: e.target.checked })} />
+                            Obrigatorio
+                          </label>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: isMobile ? '18px' : '20px 24px 24px', borderTop: '1px solid #eef2f7', display: 'flex', justifyContent: 'space-between', gap: '12px', flexDirection: isMobile ? 'column-reverse' : 'row' }}>
+              {createStep === 1 ? (
+                <>
+                  <button onClick={closeCreateModal} style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #d1d5db', background: '#ffffff', color: '#374151', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!createTemplateForm.name.trim()) {
+                        alert('Informe o nome do template')
+                        return
+                      }
+                      setCreateStep(2)
+                    }}
+                    className="btn-primary"
+                    style={{ padding: '10px 16px', fontSize: '14px', fontWeight: 700 }}
+                  >
+                    Avancar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setCreateStep(1)} style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #d1d5db', background: '#ffffff', color: '#374151', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                    Voltar
+                  </button>
+                  <button onClick={createTemplate} disabled={creatingTemplate} className="btn-primary" style={{ padding: '10px 16px', fontSize: '14px', fontWeight: 700 }}>
+                    {creatingTemplate ? 'Criando template...' : 'Criar template'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteModal && selected && (
         <div style={{
           position: 'fixed',
@@ -487,11 +844,11 @@ export default function Templates() {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 100,
-          padding: '24px',
+          padding: isMobile ? '14px' : '24px',
         }}>
           <div className="animate-fade-in" style={{
             width: '100%',
-            maxWidth: '460px',
+            maxWidth: isMobile ? 'calc(100vw - 20px)' : '460px',
             background: '#ffffff',
             borderRadius: '18px',
             boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)',
@@ -516,57 +873,13 @@ export default function Templates() {
                 Voce esta prestes a excluir o template <strong style={{ color: '#111827' }}>{selected.name}</strong>.
                 Essa acao remove o cadastro e os campos configurados para ele.
               </p>
-
-              <div style={{
-                marginTop: '16px',
-                padding: '12px 14px',
-                borderRadius: '12px',
-                background: '#fff7ed',
-                border: '1px solid #fed7aa',
-                fontSize: '13px',
-                color: '#9a3412',
-              }}>
-                Se existirem certificados dependentes desse template, vale conferir antes de prosseguir.
-              </div>
             </div>
 
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '12px',
-              padding: '0 24px 24px',
-            }}>
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  border: '1px solid #d1d5db',
-                  background: '#ffffff',
-                  color: '#374151',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '0 24px 24px' }}>
+              <button onClick={() => setShowDeleteModal(false)} style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #d1d5db', background: '#ffffff', color: '#374151', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                 Cancelar
               </button>
-              <button
-                onClick={removeTemplate}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  border: '1px solid #ef4444',
-                  background: '#dc2626',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
+              <button onClick={removeTemplate} style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #ef4444', background: '#dc2626', color: '#ffffff', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Trash2 style={{ width: '14px', height: '14px' }} />
                 Excluir agora
               </button>

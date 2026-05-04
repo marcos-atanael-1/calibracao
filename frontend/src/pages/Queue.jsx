@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Bot, Sparkles, CircleAlert, Clock3, LoaderCircle, FileText, Search } from 'lucide-react'
 import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
+import useIsMobile from '../hooks/useIsMobile'
 
 const statusLabels = {
   pending: {
@@ -80,6 +82,8 @@ function StatusPill({ status }) {
 }
 
 export default function Queue() {
+  const { user } = useAuth()
+  const isMobile = useIsMobile()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -89,6 +93,8 @@ export default function Queue() {
   const [selectedCertificate, setSelectedCertificate] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [retryingId, setRetryingId] = useState('')
+  const [deletingQueueId, setDeletingQueueId] = useState('')
+  const [deletingCertificateId, setDeletingCertificateId] = useState('')
 
   useEffect(() => {
     load()
@@ -169,6 +175,42 @@ export default function Queue() {
     setDetailLoading(false)
   }
 
+  const removeQueueItem = async (item) => {
+    const certificateLabel = item.certificate?.certificate_number || item.certificate_id
+    if (!window.confirm(`Excluir o item da fila do certificado ${certificateLabel}?`)) return
+
+    try {
+      setDeletingQueueId(item.id)
+      await api.delete(`/queue/${item.id}`)
+      if (selectedItem?.id === item.id) {
+        closeDetails()
+      }
+      await load()
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao excluir item da fila')
+    } finally {
+      setDeletingQueueId('')
+    }
+  }
+
+  const removeCertificateFromQueue = async (item) => {
+    const certificateLabel = item.certificate?.certificate_number || item.certificate_id
+    if (!window.confirm(`Excluir o certificado ${certificateLabel} e remover seu item da fila?`)) return
+
+    try {
+      setDeletingCertificateId(item.id)
+      await api.delete(`/queue/${item.id}/certificate`)
+      if (selectedItem?.id === item.id) {
+        closeDetails()
+      }
+      await load()
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Erro ao excluir certificado')
+    } finally {
+      setDeletingCertificateId('')
+    }
+  }
+
   const summary = useMemo(() => {
     return items.reduce(
       (acc, item) => {
@@ -209,10 +251,11 @@ export default function Queue() {
 
   const selectedMeta = statusLabels[selectedItem?.status] || statusLabels.pending
   const selectedExtra = selectedCertificate?.extra_fields || {}
+  const canSuperAdminDelete = user?.role === 'super_admin'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 420px) 1fr auto', gap: '18px', alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(260px, 420px) 1fr auto', gap: '18px', alignItems: 'center' }}>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#9ca3af' }} />
           <input
@@ -274,8 +317,8 @@ export default function Queue() {
         </button>
       </div>
 
-      <div style={{ ...cardStyle, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="table-scroll" style={{ ...cardStyle, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
           <colgroup>
             <col style={{ width: '17%' }} />
             <col style={{ width: '13%' }} />
@@ -378,14 +421,14 @@ export default function Queue() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 110,
-            padding: '24px',
+            padding: isMobile ? '14px' : '24px',
           }}
         >
           <div
             className="animate-fade-in"
             style={{
               width: '100%',
-              maxWidth: '920px',
+              maxWidth: isMobile ? 'calc(100vw - 20px)' : '920px',
               maxHeight: '90vh',
               overflow: 'auto',
               background: '#ffffff',
@@ -486,7 +529,7 @@ export default function Queue() {
                 </div>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '18px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '18px' }}>
                     <div style={{ ...cardStyle, padding: '20px' }}>
                       <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '14px' }}>Dados tecnicos</h4>
                       <div style={{ display: 'grid', gap: '12px' }}>
@@ -520,7 +563,7 @@ export default function Queue() {
                         <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Resumo do certificado associado</h4>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '14px 18px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '14px 18px' }}>
                         <DetailRow label="Numero" value={selectedCertificate.certificate_number} />
                         <DetailRow label="Tecnico" value={selectedExtra.tecnico || '-'} />
                         <DetailRow label="Data da calibracao" value={selectedExtra.data_calibracao || '-'} />
@@ -531,16 +574,66 @@ export default function Queue() {
                     </div>
                   )}
 
-                  {selectedItem.status === 'error' && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  {(selectedItem.status === 'error' || canSuperAdminDelete) && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                      {canSuperAdminDelete && (
+                        <>
+                          <button
+                            onClick={() => removeQueueItem(selectedItem)}
+                            disabled={deletingQueueId === selectedItem.id || deletingCertificateId === selectedItem.id}
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '10px',
+                              border: '1px solid #f59e0b',
+                              background: '#fff7ed',
+                              color: '#b45309',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              opacity:
+                                deletingQueueId === selectedItem.id || deletingCertificateId === selectedItem.id
+                                  ? 0.7
+                                  : 1,
+                            }}
+                          >
+                            {deletingQueueId === selectedItem.id ? 'Excluindo fila...' : 'Excluir da fila'}
+                          </button>
+
+                          <button
+                            onClick={() => removeCertificateFromQueue(selectedItem)}
+                            disabled={deletingQueueId === selectedItem.id || deletingCertificateId === selectedItem.id}
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '10px',
+                              border: '1px solid #dc2626',
+                              background: '#fef2f2',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              opacity:
+                                deletingQueueId === selectedItem.id || deletingCertificateId === selectedItem.id
+                                  ? 0.7
+                                  : 1,
+                            }}
+                          >
+                            {deletingCertificateId === selectedItem.id ? 'Excluindo certificado...' : 'Excluir certificado'}
+                          </button>
+                        </>
+                      )}
+
+                      {selectedItem.status === 'error' && (
                       <button
                         onClick={() => retry(selectedItem.id)}
-                        disabled={retryingId === selectedItem.id}
+                        disabled={
+                          retryingId === selectedItem.id ||
+                          deletingQueueId === selectedItem.id ||
+                          deletingCertificateId === selectedItem.id
+                        }
                         className="btn-primary"
                         style={{ padding: '10px 16px', opacity: retryingId === selectedItem.id ? 0.7 : 1 }}
                       >
                         {retryingId === selectedItem.id ? 'Reenviando...' : 'Reprocessar no Agente'}
                       </button>
+                      )}
                     </div>
                   )}
                 </>

@@ -8,14 +8,25 @@ import Certificates from './pages/Certificates'
 import CertificateForm from './pages/CertificateForm'
 import Templates from './pages/Templates'
 import Queue from './pages/Queue'
+import NotificationsPage from './pages/Notifications'
 import UsersPage from './pages/Users'
 import SettingsPage from './pages/Settings'
+import AISetupPage from './pages/AISetup'
+import { canAccessModule } from './utils/access'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
   // Force password change on first login
   if (user.must_change_password) return <ChangePassword />
+  return children
+}
+
+function ModuleRoute({ moduleKey, children }) {
+  const { user } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  if (user.must_change_password) return <ChangePassword />
+  if (!canAccessModule(user.role, moduleKey)) return <Navigate to="/" replace />
   return children
 }
 
@@ -26,14 +37,16 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-        <Route index element={<Dashboard />} />
-        <Route path="certificates" element={<Certificates />} />
-        <Route path="certificates/new" element={<CertificateForm />} />
-        <Route path="certificates/:id/edit" element={<CertificateForm />} />
-        <Route path="templates" element={<Templates />} />
-        <Route path="queue" element={<Queue />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route index element={<ModuleRoute moduleKey="dashboard"><Dashboard /></ModuleRoute>} />
+        <Route path="certificates" element={<ModuleRoute moduleKey="certificates"><Certificates /></ModuleRoute>} />
+        <Route path="certificates/new" element={<ModuleRoute moduleKey="certificates"><CertificateForm /></ModuleRoute>} />
+        <Route path="certificates/:id/edit" element={<ModuleRoute moduleKey="certificates"><CertificateForm /></ModuleRoute>} />
+        <Route path="templates" element={<ModuleRoute moduleKey="templates"><Templates /></ModuleRoute>} />
+        <Route path="queue" element={<ModuleRoute moduleKey="queue"><Queue /></ModuleRoute>} />
+        <Route path="notifications" element={<ModuleRoute moduleKey="notifications"><NotificationsPage /></ModuleRoute>} />
+        <Route path="users" element={<ModuleRoute moduleKey="users"><UsersPage /></ModuleRoute>} />
+        <Route path="settings" element={<ModuleRoute moduleKey="settings"><SettingsPage /></ModuleRoute>} />
+        <Route path="ai-setup" element={<ModuleRoute moduleKey="ai_setup"><AISetupPage /></ModuleRoute>} />
       </Route>
     </Routes>
   )

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import api from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 const normalizeSettingToken = (value) => (
   (value || '')
@@ -47,6 +48,7 @@ const buildFormOptions = (settingsList) => {
     materials: resolve('materials', 'materiais', 'material'),
     scopes: resolve('scopes', 'escopos', 'escopo'),
     methods: resolve('methods', 'metodos', 'metodo'),
+    measurement_units: resolve('measurement_units', 'unidades_de_medicao', 'unidade_de_medicao'),
     temperature_standards: resolve('temperature_standards', 'padroes_de_temperatura', 'padrao_de_temperatura'),
     humidity_standards: resolve('humidity_standards', 'padroes_de_umidade', 'padrao_de_umidade'),
     pressure_standards: resolve('pressure_standards', 'padroes_de_pressao', 'padrao_de_pressao'),
@@ -62,7 +64,7 @@ const buildFormOptions = (settingsList) => {
 
 const defaultPointScopes = ['Dispensadores', 'Microvolume', 'Picnometro', 'Seringa', 'Titulador', 'Vidraria de Laboratorio']
 const defaultApparentMassUnits = ['ug', 'mg', 'g', 'kg']
-const defaultMeasurementUnits = ['L', 'dL', 'cL', 'mL', 'uL', 'dm3', 'cm3', 'mm3']
+const defaultMeasurementUnits = ['L', 'dL', 'cL', 'mL', 'µL', 'dm³', 'cm³', 'mm³']
 const measurementModes = [
   { value: 'ponto_fixo', label: 'Ponto Fixo' },
   { value: 'multipontos', label: 'Multipontos' },
@@ -78,7 +80,7 @@ function createEmptyPoint(pointNumber) {
     balanca_utilizada: '',
     termometro: '',
     escopo: '',
-    massa_aparente_unidade: 'kg',
+    massa_aparente_unidade: 'g',
     massas: Array.from({ length: 10 }, (_, index) => ({
       medicao: index + 1,
       massa_aparente: '',
@@ -114,17 +116,62 @@ function findOption(optionsList, preferredValue, fallbackValue = '') {
 
 function generateExampleCertificateNumber() {
   const now = new Date()
-  const year = now.getFullYear()
   const stamp = `${now.getMonth() + 1}`.padStart(2, '0') + `${now.getDate()}`.padStart(2, '0')
   const randomBlock = Math.floor(1000 + Math.random() * 9000)
-  return `CAL-${year}-${stamp}${randomBlock}`
+  return `${stamp}${randomBlock}`
+}
+
+function normalizeMeasurementUnitValue(value) {
+  const raw = (value || '').toString().trim()
+  if (!raw) return ''
+
+  const normalizedToken = normalizeSettingToken(raw)
+  const aliases = {
+    ul: 'µL',
+    l: 'L',
+    dl: 'dL',
+    cl: 'cL',
+    ml: 'mL',
+    dm3: 'dm³',
+    cm3: 'cm³',
+    mm3: 'mm³',
+  }
+
+  return aliases[normalizedToken] || raw
+}
+
+function normalizeMeasurementUnitValueSafe(value) {
+  const raw = (value || '').toString().trim()
+  if (!raw) return ''
+
+  const normalizedToken = raw
+    .toLowerCase()
+    .replace(/[ÂâÃ¢Ã‚]/g, '')
+    .replace(/\u00B5/g, 'u')
+    .replace(/\u03BC/g, 'u')
+    .replace(/\u00B3/g, '3')
+    .replace(/\s+/g, '')
+
+  const aliases = {
+    ul: '\u00B5L',
+    l: 'L',
+    dl: 'dL',
+    cl: 'cL',
+    ml: 'mL',
+    dm3: 'dm\u00B3',
+    cm3: 'cm\u00B3',
+    mm3: 'mm\u00B3',
+  }
+
+  return aliases[normalizedToken] || raw
 }
 
 export default function CertificateForm() {
+  const isMobile = useIsMobile()
   const nav = useNavigate()
   const { id } = useParams()
   const isEditing = Boolean(id)
-  const [templates, setTemplates] = useState([])
+  const [instrumentTypes, setInstrumentTypes] = useState([])
   const [savingMode, setSavingMode] = useState('')
   const [loadingDraft, setLoadingDraft] = useState(isEditing)
   const [options, setOptions] = useState({})
@@ -153,7 +200,7 @@ export default function CertificateForm() {
     faixa_inicial: '',
     faixa_final: '',
     capacidade_maxima: '',
-    unidade_medicao: 'uL',
+    unidade_medicao: '\u00B5L',
     menor_divisao: '',
     metodo: '',
     qtd_canais: '1',
@@ -177,9 +224,12 @@ export default function CertificateForm() {
   const [channels, setChannels] = useState([createEmptyChannel(1, 1)])
 
   useEffect(() => {
-    api.get('/templates').then((r) => setTemplates(r.data.data || [])).catch(() => {})
-    api.get('/settings').then((r) => {
-      setOptions(buildFormOptions(r.data.data || []))
+    Promise.all([
+      api.get('/settings'),
+      api.get('/instrument-types?active_only=false'),
+    ]).then(([settingsResponse, instrumentTypesResponse]) => {
+      setOptions(buildFormOptions(settingsResponse.data.data || []))
+      setInstrumentTypes(instrumentTypesResponse.data.data || [])
     }).catch(() => {})
   }, [])
 
@@ -217,7 +267,7 @@ export default function CertificateForm() {
         faixa_inicial: extra.faixa_inicial || '',
         faixa_final: extra.faixa_final || '',
         capacidade_maxima: extra.capacidade_maxima || '',
-        unidade_medicao: extra.unidade_medicao || certificate.unit || 'uL',
+        unidade_medicao: normalizeMeasurementUnitValueSafe(extra.unidade_medicao || certificate.unit || '\u00B5L'),
         menor_divisao: extra.menor_divisao || '',
         metodo: extra.metodo || '',
         qtd_canais: extra.qtd_canais || '1',
@@ -289,6 +339,20 @@ export default function CertificateForm() {
     setActiveChannelTab((prev) => Math.min(prev, channelCount - 1))
   }, [form.qtd_canais, form.pontos_por_canal])
 
+  useEffect(() => {
+    const normalizedInstrument = normalizeSettingToken(form.instrumento)
+    if (!normalizedInstrument) return
+
+    const matchedInstrumentType = instrumentTypes.find((item) =>
+      normalizeSettingToken(item.name) === normalizedInstrument
+    )
+
+    if (!matchedInstrumentType?.template_id) return
+    if (form.template_id === matchedInstrumentType.template_id) return
+
+    setForm((prev) => ({ ...prev, template_id: matchedInstrumentType.template_id }))
+  }, [form.instrumento, form.template_id, instrumentTypes])
+
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
 
   const updateChannel = (channelIdx, key, value) => {
@@ -337,14 +401,31 @@ export default function CertificateForm() {
     [channels]
   )
 
-  const measurementUnits = defaultMeasurementUnits
+  const measurementUnits = (options.measurement_units || []).length > 0
+    ? options.measurement_units.map(normalizeMeasurementUnitValueSafe)
+    : defaultMeasurementUnits.map(normalizeMeasurementUnitValueSafe)
+  const selectableInstrumentTypes = useMemo(
+    () => instrumentTypes.filter((item) => item.is_active && item.template_id),
+    [instrumentTypes]
+  )
+  const instrumentOptions = useMemo(() => {
+    const names = selectableInstrumentTypes.map((item) => item.name)
+    if (form.instrumento && !names.some((item) => normalizeSettingToken(item) === normalizeSettingToken(form.instrumento))) {
+      names.unshift(form.instrumento)
+    }
+    return names
+  }, [form.instrumento, selectableInstrumentTypes])
+  const selectedInstrumentType = useMemo(
+    () => instrumentTypes.find((item) => normalizeSettingToken(item.name) === normalizeSettingToken(form.instrumento)),
+    [form.instrumento, instrumentTypes]
+  )
 
   const selectedMeasurementMode = form.tipo_faixa || 'multipontos'
 
   const buildCertificatePayload = () => {
     let rangeMin = ''
     let rangeMax = ''
-    let unit = form.unidade_medicao || ''
+    let unit = normalizeMeasurementUnitValueSafe(form.unidade_medicao || '')
 
     if (selectedMeasurementMode === 'ponto_fixo') {
       rangeMin = form.capacidade || ''
@@ -434,18 +515,38 @@ export default function CertificateForm() {
     return renderInput(label, field, type, required, placeholder)
   }
 
+  const renderInstrumentField = () => {
+    if (instrumentOptions.length > 0) {
+      return (
+        <div>
+          <label style={labelStyle}>Instrumento</label>
+          <select value={form.instrumento} onChange={(e) => set('instrumento', e.target.value)} className="input-field">
+            <option value="">Selecione...</option>
+            {instrumentOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+          {selectedInstrumentType?.template_id && (
+            <p style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+              Template vinculado automaticamente ao instrumento selecionado.
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    return renderInput('Instrumento', 'instrumento')
+  }
+
   const pointScopes = (options.point_scopes || []).length > 0 ? options.point_scopes : defaultPointScopes
   const apparentMassUnits = (options.apparent_mass_units || []).length > 0 ? options.apparent_mass_units : defaultApparentMassUnits
   const activeChannel = channels[activeChannelTab]
 
   const fillExampleData = () => {
-    const pocTemplate = templates.find((template) =>
-      normalizeSettingToken(template.name).includes('certificado_de_volume_poc')
+    const micropipeta = selectableInstrumentTypes.find((instrumentType) =>
+      normalizeSettingToken(instrumentType.name).includes('micropipeta_de_volume_fixo')
     )
 
     setForm((prev) => ({
       ...prev,
-      template_id: pocTemplate?.id || prev.template_id,
       certificate_number: generateExampleCertificateNumber(),
       empresa: findOption(options.companies, 'Elus', 'Elus'),
       tipo_calibracao: findOption(options.calibration_types, 'Acreditado Interno', 'Acreditado Interno'),
@@ -454,7 +555,7 @@ export default function CertificateForm() {
       endereco: 'Rua do Teste',
       interessado: 'Teste interessado',
       endereco_interessado: 'Rua do interessado',
-      instrumento: findOption(options.instruments, 'Micropipeta de Volume Fixo', 'Micropipeta de Volume Fixo'),
+      instrumento: micropipeta?.name || 'Micropipeta de Volume Fixo',
       fabricante: 'teste',
       modelo: 'teste',
       identificacao: 'teste',
@@ -467,7 +568,7 @@ export default function CertificateForm() {
       faixa_inicial: '0',
       faixa_final: '100',
       capacidade_maxima: '',
-      unidade_medicao: 'uL',
+      unidade_medicao: '\u00B5L',
       menor_divisao: '0,1',
       metodo: findOption(options.methods, 'Normal', 'Normal'),
       qtd_canais: '1',
@@ -476,7 +577,7 @@ export default function CertificateForm() {
       data_emissao: '2026-04-27',
       proxima_calibracao: '2026-04-30',
       tecnico: findOption(options.technicians, 'Carlos Augusto Benevides'),
-      padrao_temperatura: findOption(options.temperature_standards, 'E.TH.LQ-001(OUT)', 'E.TH.LQ-001(OUT)'),
+      padrao_temperatura: findOption(options.temperature_standards, 'E.TH.LQ-001 (OUT)', 'E.TH.LQ-001 (OUT)'),
       temperatura_inicial: '21',
       temperatura_final: '21',
       padrao_umidade: findOption(options.humidity_standards, 'E.TH.LQ-001', 'E.TH.LQ-001'),
@@ -513,7 +614,7 @@ export default function CertificateForm() {
             balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
-            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
             massas: makeMassRows('0.01'),
           },
           {
@@ -524,7 +625,7 @@ export default function CertificateForm() {
             balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
-            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
             massas: makeMassRows('0.05'),
           },
           {
@@ -535,7 +636,7 @@ export default function CertificateForm() {
             balanca_utilizada: findOption(options.balances, 'E.MS.LQ-005', 'E.MS.LQ-005'),
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
-            massa_aparente_unidade: findOption(apparentMassUnits, 'kg', 'kg'),
+            massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
             massas: makeMassRows('0.1'),
           },
         ],
@@ -579,17 +680,9 @@ export default function CertificateForm() {
       ) : (
       <form onSubmit={(e) => submit(e, true)} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div className="card" style={{ padding: '24px' }}>
-          {sectionTitle('Template')}
-          <select value={form.template_id} onChange={(e) => set('template_id', e.target.value)} required className="input-field">
-            <option value="">Selecione um template...</option>
-            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
-        </div>
-
-        <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Dados do Certificado')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {renderInput('Nº do Certificado', 'certificate_number', 'text', true, 'CAL-2026-001')}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+            {renderInput('Nº do Certificado', 'certificate_number', 'text', true, '05041234')}
             {renderSmartField('Empresa', 'empresa', 'companies')}
             {renderSelect('Tipo da Calibracao', 'tipo_calibracao', 'calibration_types')}
             {renderInput('Nº do Orcamento', 'numero_orcamento')}
@@ -602,8 +695,8 @@ export default function CertificateForm() {
 
         <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Instrumento')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {renderSmartField('Instrumento', 'instrumento', 'instruments')}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+            {renderInstrumentField()}
             {renderInput('Fabricante', 'fabricante')}
             {renderInput('Modelo', 'modelo')}
             {renderInput('Identificacao', 'identificacao')}
@@ -697,7 +790,7 @@ export default function CertificateForm() {
 
         <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Datas')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
             {renderInput('Data da Calibracao', 'data_calibracao', 'date')}
             {renderInput('Data de Emissao', 'data_emissao', 'date')}
             {renderInput('Proxima Calibracao', 'proxima_calibracao', 'date')}
@@ -707,7 +800,7 @@ export default function CertificateForm() {
 
         <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Condicoes Ambientais')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '16px' }}>
             {renderSelect('Padrao de Temperatura', 'padrao_temperatura', 'temperature_standards')}
             {renderInput('Temperatura Inicial', 'temperatura_inicial', 'number')}
             {renderInput('Temperatura Final', 'temperatura_final', 'number')}
@@ -752,7 +845,7 @@ export default function CertificateForm() {
                   Dados do Canal {activeChannel.channel_number}
                 </h4>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
                   <div>
                     <label style={labelStyle}>Identificacao do Canal/Seringa</label>
                     <input
@@ -780,7 +873,7 @@ export default function CertificateForm() {
                     Ponto {point.point_number}
                   </h4>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                     <div>
                       <label style={{ ...labelStyle, fontSize: '12px' }}>Valor Nominal</label>
                       <input type="number" step="any" value={point.valor_nominal} onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'valor_nominal', e.target.value)} className="input-field" />
@@ -795,7 +888,7 @@ export default function CertificateForm() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                     <div>
                       <label style={{ ...labelStyle, fontSize: '12px' }}>Balanca utilizada</label>
                       {(options.balances || []).length > 0 ? (
@@ -838,14 +931,14 @@ export default function CertificateForm() {
                     <div style={{ border: '1px solid #dbe2ea', borderRadius: '12px', overflow: 'hidden', background: '#ffffff' }}>
                       <div style={{
                         display: 'grid',
-                        gridTemplateColumns: '72px 1fr 1fr',
+                        gridTemplateColumns: isMobile ? '1fr' : '72px 1fr 1fr',
                         gap: '0',
                         background: '#eef3f8',
                         borderBottom: '1px solid #dbe2ea',
                       }}>
                         <div style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#334155' }}>Medicao</div>
                         <div style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#334155' }}>
-                          Massa aparente ({point.massa_aparente_unidade || 'kg'})
+                          Massa aparente ({point.massa_aparente_unidade || 'g'})
                         </div>
                         <div style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#334155' }}>Temperatura do fluido</div>
                       </div>
@@ -855,7 +948,7 @@ export default function CertificateForm() {
                           key={massa.medicao}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '72px 1fr 1fr',
+                            gridTemplateColumns: isMobile ? '1fr' : '72px 1fr 1fr',
                             gap: '0',
                             borderBottom: massIdx === point.massas.length - 1 ? 'none' : '1px solid #eef2f7',
                           }}

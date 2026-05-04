@@ -3,15 +3,18 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, LogOut, KeyRound, Check, Loader2, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/client'
+import useIsMobile from '../../hooks/useIsMobile'
 
 const pageTitles = {
   '/': 'Dashboard',
   '/certificates': 'Certificados',
   '/certificates/new': 'Novo Certificado',
+  '/notifications': 'Notificacoes',
   '/templates': 'Templates',
   '/queue': 'Agente de Processamento',
   '/users': 'Usuários',
   '/settings': 'Configurações',
+  '/ai-setup': 'IA Setup',
 }
 
 function formatNotificationTime(value) {
@@ -29,6 +32,7 @@ function formatNotificationTime(value) {
 }
 
 export default function Header() {
+  const isMobile = useIsMobile()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const dropdownRef = useRef(null)
@@ -54,9 +58,15 @@ export default function Header() {
     if (!user) return
     setNotificationsLoading(true)
     try {
-      const { data } = await api.get('/notifications?limit=8')
-      setNotifications(data?.data || [])
-      setNotificationsUnread(data?.meta?.unread_count || 0)
+      const [unreadResponse, readResponse] = await Promise.all([
+        api.get('/notifications?limit=100&is_read=false'),
+        api.get('/notifications?limit=3&is_read=true'),
+      ])
+
+      const unreadItems = unreadResponse.data?.data || []
+      const readItems = readResponse.data?.data || []
+      setNotifications([...unreadItems, ...readItems])
+      setNotificationsUnread(unreadResponse.data?.meta?.unread_count || 0)
     } catch {
       setNotifications([])
       setNotificationsUnread(0)
@@ -107,6 +117,7 @@ export default function Header() {
       await api.post('/notifications/read-all')
       setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })))
       setNotificationsUnread(0)
+      loadNotifications()
     } catch {}
   }
 
@@ -162,21 +173,21 @@ export default function Header() {
   return (
     <header
       style={{
-        height: '64px',
+        height: isMobile ? '60px' : '64px',
         background: '#ffffff',
         borderBottom: '1px solid #e5e7eb',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 32px',
+        padding: isMobile ? '0 14px' : '0 32px',
         position: 'sticky',
         top: 0,
         zIndex: 20,
       }}
     >
-      <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827' }}>{getTitle()}</h2>
+      <h2 style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 600, color: '#111827' }}>{getTitle()}</h2>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '20px' }}>
         <div style={{ position: 'relative' }} ref={notificationsRef}>
           <button
             onClick={() => {
@@ -226,7 +237,7 @@ export default function Header() {
                 position: 'absolute',
                 top: 'calc(100% + 10px)',
                 right: 0,
-                width: '360px',
+                width: isMobile ? 'min(92vw, 360px)' : '360px',
                 background: '#ffffff',
                 borderRadius: '12px',
                 boxShadow: '0 18px 48px rgba(15, 23, 42, 0.18)',
@@ -277,51 +288,75 @@ export default function Header() {
                     Nenhuma notificacao por enquanto.
                   </div>
                 ) : (
-                  notifications.map((notification) => (
-                    <button
-                      key={notification.id}
-                      onClick={() => handleNotificationClick(notification)}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        border: 'none',
-                        background: notification.is_read ? '#ffffff' : '#f8fbff',
-                        padding: '14px 16px',
-                        borderBottom: '1px solid #f1f5f9',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div
+                  <>
+                    {notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        onClick={() => handleNotificationClick(notification)}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
+                          width: '100%',
+                          textAlign: 'left',
+                          border: 'none',
+                          background: notification.is_read ? '#ffffff' : '#f8fbff',
+                          padding: '14px 16px',
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
                         }}
                       >
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
-                          {notification.title}
-                        </span>
-                        {!notification.is_read && (
-                          <span
-                            style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              background: '#2563eb',
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                      </div>
-                      <p style={{ marginTop: '5px', fontSize: '12px', lineHeight: 1.5, color: '#475569' }}>
-                        {notification.message}
-                      </p>
-                      <p style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
-                        {formatNotificationTime(notification.created_at)}
-                      </p>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                            {notification.title}
+                          </span>
+                          {!notification.is_read && (
+                            <span
+                              style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                background: '#2563eb',
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                        </div>
+                        <p style={{ marginTop: '5px', fontSize: '12px', lineHeight: 1.5, color: '#475569' }}>
+                          {notification.message}
+                        </p>
+                        <p style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                          {formatNotificationTime(notification.created_at)}
+                        </p>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setNotificationsOpen(false)
+                        nav('/notifications')
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        border: 'none',
+                        borderTop: '1px solid #eef2f7',
+                        background: '#f8fafc',
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: '#002868',
+                      }}
+                    >
+                      Visualizar todas
                     </button>
-                  ))
+                  </>
                 )}
               </div>
             </div>
@@ -369,14 +404,14 @@ export default function Header() {
                 {user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {!isMobile && <div style={{ display: 'flex', flexDirection: 'column' }}>
               <p style={{ fontSize: '13px', fontWeight: 500, color: '#1f2937', lineHeight: 1 }}>
                 {user?.name || 'Usuario'}
               </p>
               <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
                 {user?.role || 'tecnico'}
               </p>
-            </div>
+            </div>}
           </div>
 
           {dropdownOpen && (

@@ -28,7 +28,7 @@ def get_certificate_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return APIResponse(data=CertificateService.get_stats(db))
+    return APIResponse(data=CertificateService.get_stats(db, current_user))
 
 
 @router.get("", response_model=APIResponse)
@@ -42,6 +42,7 @@ def list_certificates(
 ):
     result = CertificateService.get_all(
         db,
+        current_user,
         page=page,
         per_page=per_page,
         status_filter=status_filter,
@@ -60,7 +61,7 @@ def get_certificate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cert = CertificateService.get_by_id(db, certificate_id)
+    cert = CertificateService.get_by_id(db, certificate_id, current_user)
     return APIResponse(
         data=CertificateResponse.model_validate(cert).model_dump()
     )
@@ -86,7 +87,7 @@ def update_certificate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cert = CertificateService.update(db, certificate_id, data)
+    cert = CertificateService.update(db, certificate_id, data, current_user)
     return APIResponse(
         data=CertificateResponse.model_validate(cert).model_dump(),
         message="Certificado atualizado",
@@ -101,7 +102,7 @@ def delete_certificate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    CertificateService.delete(db, certificate_id)
+    CertificateService.delete(db, certificate_id, current_user)
 
 
 @router.post("/{certificate_id}/queue", response_model=APIResponse)
@@ -110,7 +111,7 @@ def enqueue_certificate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    queue_item = CertificateService.enqueue(db, certificate_id)
+    queue_item = CertificateService.enqueue(db, certificate_id, current_user)
     return APIResponse(
         data=QueueItemResponse.model_validate(queue_item).model_dump(),
         message="Certificado enviado para processamento",
@@ -163,7 +164,7 @@ def download_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cert = CertificateService.get_by_id(db, certificate_id)
+    cert = CertificateService.get_by_id(db, certificate_id, current_user)
     if not cert.pdf_path or not os.path.exists(cert.pdf_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import api from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 const statusMeta = {
   draft: {
@@ -30,16 +31,16 @@ const statusMeta = {
     bg: '#fff3d6',
     color: '#b45309',
     accent: '#f59e0b',
-    agentTitle: 'Agente de IA aguardando vez',
-    agentMessage: 'O Agente ja recebeu este trabalho e vai iniciar a geracao assim que a janela atual de execucao estiver livre.',
+    agentTitle: 'Agente aguardando inicio',
+    agentMessage: 'Este certificado ja entrou na fila e sera assumido pelo Agente assim que a execucao atual terminar.',
   },
   processing: {
     label: 'Agente gerando',
     bg: '#dbeafe',
     color: '#1d4ed8',
     accent: '#2563eb',
-    agentTitle: 'Agente de IA gerando certificado',
-    agentMessage: 'O Agente esta preenchendo a planilha, consolidando os dados e preparando o PDF deste certificado.',
+    agentTitle: 'Agente gerando certificado agora',
+    agentMessage: 'O Agente ja iniciou este processamento, esta preenchendo a planilha oficial e montando o PDF do certificado.',
   },
   done: {
     label: 'Certificado pronto',
@@ -178,6 +179,7 @@ function DetailField({ label, value }) {
 }
 
 export default function Certificates() {
+  const isMobile = useIsMobile()
   const nav = useNavigate()
   const [certs, setCerts] = useState([])
   const [page, setPage] = useState(1)
@@ -348,7 +350,7 @@ export default function Certificates() {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.25fr) repeat(3, minmax(140px, 0.82fr)) auto auto', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(220px, 1.25fr) repeat(3, minmax(140px, 0.82fr)) auto auto', gap: '12px', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
             <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#9ca3af' }} />
             <input
@@ -419,8 +421,8 @@ export default function Certificates() {
         </div>
       </div>
 
-      <div style={{ ...cardStyle, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="table-scroll" style={{ ...cardStyle, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
           <colgroup>
             <col style={{ width: '12%' }} />
             <col style={{ width: '12%' }} />
@@ -583,14 +585,14 @@ export default function Certificates() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 110,
-            padding: '24px',
+            padding: isMobile ? '14px' : '24px',
           }}
         >
           <div
             className="animate-fade-in"
             style={{
               width: '100%',
-              maxWidth: '1080px',
+              maxWidth: isMobile ? 'calc(100vw - 20px)' : '1080px',
               maxHeight: '90vh',
               overflow: 'auto',
               background: '#ffffff',
@@ -746,14 +748,14 @@ export default function Certificates() {
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '18px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: '18px' }}>
                     <div style={{ ...cardStyle, padding: '20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                         <Building2 style={{ width: '16px', height: '16px', color: '#475569' }} />
                         <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Dados do certificado</h4>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px 18px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '16px 18px' }}>
                         <DetailField label="Empresa" value={selectedExtra.empresa} />
                         <DetailField label="Tipo da calibracao" value={selectedExtra.tipo_calibracao} />
                         <DetailField label="Cliente" value={selectedExtra.contratante} />
@@ -792,7 +794,7 @@ export default function Certificates() {
 
                   <div style={{ ...cardStyle, padding: '20px' }}>
                     <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', marginBottom: '16px' }}>Condicoes ambientais</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px 18px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '16px 18px' }}>
                       <DetailField label="Padrao temperatura" value={selectedExtra.padrao_temperatura} />
                       <DetailField label="Temperatura inicial" value={selectedExtra.temperatura_inicial} />
                       <DetailField label="Temperatura final" value={selectedExtra.temperatura_final} />
@@ -865,14 +867,14 @@ export default function Certificates() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100,
-            padding: '24px',
+            padding: isMobile ? '14px' : '24px',
           }}
         >
           <div
             className="animate-fade-in"
             style={{
               width: '100%',
-              maxWidth: '460px',
+              maxWidth: isMobile ? 'calc(100vw - 20px)' : '460px',
               background: '#ffffff',
               borderRadius: '18px',
               boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)',

@@ -9,26 +9,32 @@
     "post_fill_macros": ["Formcert"],
     "measurement_mode_mapping": {
       "sheet_name": "Dados",
+      "linked_cell": "Z9",
+      "linked_values": {
+        "ponto_fixo": 1,
+        "multipontos": 2,
+        "faixa_variavel": 3
+      },
       "button_captions": {
         "ponto_fixo": "Ponto fixo",
         "multipontos": "Multipontos",
         "faixa_variavel": "Faixa variavel"
       },
-      "field_cells": {
-        "ponto_fixo": {
-          "capacidade": "W12",
-          "unidade_medicao": "X12",
+        "field_cells": {
+          "ponto_fixo": {
+          "capacidade": "U12",
+          "unidade_medicao": "W12",
           "menor_divisao": "R13"
         },
         "multipontos": {
           "faixa_inicial": "R12",
-          "faixa_final": "W12",
-          "unidade_medicao": "X12",
+          "faixa_final": "U12",
+          "unidade_medicao": "W12",
           "menor_divisao": "R13"
         },
         "faixa_variavel": {
-          "capacidade_maxima": "W12",
-          "unidade_medicao": "X12"
+          "capacidade_maxima": "U12",
+          "unidade_medicao": "W12"
         }
       }
     },

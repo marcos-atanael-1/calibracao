@@ -34,7 +34,7 @@ class CertificatePointResponse(BaseModel):
 # --- Certificate schemas ---
 
 class CertificateCreate(BaseModel):
-    template_id: UUID
+    template_id: Optional[UUID] = None
     certificate_number: str
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
@@ -51,6 +51,7 @@ class CertificateCreate(BaseModel):
 
 
 class CertificateUpdate(BaseModel):
+    template_id: Optional[UUID] = None
     certificate_number: Optional[str] = None
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None

@@ -20,3 +20,4 @@ python-multipart==0.0.9
 # Utilities
 uuid7==0.1.0
 structlog==24.4.0
+openai==1.109.1

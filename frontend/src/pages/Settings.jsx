@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Trash2, Save, X, SlidersHorizontal, List } from 'lucide-react'
 import api from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 function getErrorMessage(error, fallback = 'Erro') {
   const detail = error?.response?.data?.detail
@@ -8,8 +9,18 @@ function getErrorMessage(error, fallback = 'Erro') {
   return fallback
 }
 
+const emptyInstrumentForm = {
+  name: '',
+  description: '',
+  template_id: '',
+  is_active: true,
+}
+
 export default function SettingsPage() {
+  const isMobile = useIsMobile()
   const [settings, setSettings] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [instrumentTypes, setInstrumentTypes] = useState([])
   const [selected, setSelected] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [newKey, setNewKey] = useState('')
@@ -19,19 +30,46 @@ export default function SettingsPage() {
   const [editValues, setEditValues] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [saving, setSaving] = useState(false)
+  const [instrumentForm, setInstrumentForm] = useState(emptyInstrumentForm)
+  const [editingInstrumentId, setEditingInstrumentId] = useState('')
+  const [savingInstrument, setSavingInstrument] = useState(false)
+  const [showInstrumentModal, setShowInstrumentModal] = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   const load = async () => {
     try {
-      const { data } = await api.get('/settings')
-      setSettings(data.data || [])
+      const [settingsResponse, templatesResponse, instrumentsResponse] = await Promise.all([
+        api.get('/settings'),
+        api.get('/templates?active_only=false'),
+        api.get('/instrument-types?active_only=false'),
+      ])
+      setSettings(settingsResponse.data.data || [])
+      setTemplates(templatesResponse.data.data || [])
+      setInstrumentTypes(instrumentsResponse.data.data || [])
     } catch {}
   }
 
   const selectSetting = (setting) => {
     setSelected(setting)
     setEditValues([...(setting.values || [])])
+    setInstrumentForm(emptyInstrumentForm)
+    setEditingInstrumentId('')
+    setShowInstrumentModal(false)
+  }
+
+  const closeInstrumentModal = () => {
+    setShowInstrumentModal(false)
+    setInstrumentForm(emptyInstrumentForm)
+    setEditingInstrumentId('')
+  }
+
+  const openCreateInstrumentModal = () => {
+    setInstrumentForm(emptyInstrumentForm)
+    setEditingInstrumentId('')
+    setShowInstrumentModal(true)
   }
 
   const createSetting = async (e) => {
@@ -89,6 +127,58 @@ export default function SettingsPage() {
     }
   }
 
+  const saveInstrumentType = async (e) => {
+    e.preventDefault()
+    setSavingInstrument(true)
+    try {
+      const payload = {
+        name: instrumentForm.name.trim(),
+        description: instrumentForm.description.trim() || null,
+        template_id: instrumentForm.template_id || null,
+        is_active: instrumentForm.is_active,
+      }
+
+      if (editingInstrumentId) {
+        await api.put(`/instrument-types/${editingInstrumentId}`, payload)
+      } else {
+        await api.post('/instrument-types', payload)
+      }
+
+      closeInstrumentModal()
+      const { data } = await api.get('/instrument-types?active_only=false')
+      setInstrumentTypes(data.data || [])
+    } catch (error) {
+      alert(getErrorMessage(error))
+    } finally {
+      setSavingInstrument(false)
+    }
+  }
+
+  const editInstrumentType = (item) => {
+    setEditingInstrumentId(item.id)
+    setInstrumentForm({
+      name: item.name || '',
+      description: item.description || '',
+      template_id: item.template_id || '',
+      is_active: item.is_active ?? true,
+    })
+    setShowInstrumentModal(true)
+  }
+
+  const deleteInstrumentType = async (id) => {
+    if (!confirm('Excluir este instrumento?')) return
+    try {
+      await api.delete(`/instrument-types/${id}`)
+      if (editingInstrumentId === id) {
+        closeInstrumentModal()
+      }
+      const { data } = await api.get('/instrument-types?active_only=false')
+      setInstrumentTypes(data.data || [])
+    } catch (error) {
+      alert(getErrorMessage(error))
+    }
+  }
+
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const filteredSettings = settings.filter((setting) => {
     if (!normalizedSearch) return true
@@ -106,8 +196,18 @@ export default function SettingsPage() {
     return haystack.includes(normalizedSearch)
   })
 
+  const selectedIsInstruments = selected?.key === 'instruments'
+  const instrumentTemplateMap = useMemo(
+    () => new Map(templates.map((template) => [template.id, template])),
+    [templates]
+  )
+
+  const instrumentCountForCard = selectedIsInstruments
+    ? instrumentTypes.length
+    : (selected?.values || []).length
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', minHeight: '500px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '24px', minHeight: '500px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#111827' }}>Listas de Opções</h3>
@@ -197,33 +297,36 @@ export default function SettingsPage() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {filteredSettings.map((setting) => (
-            <button
-              key={setting.id}
-              onClick={() => selectSetting(setting)}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: '16px',
-                borderRadius: '12px',
-                border: selected?.id === setting.id ? '1px solid rgba(0,40,104,0.2)' : '1px solid #e5e7eb',
-                background: selected?.id === setting.id ? '#e8eef8' : '#ffffff',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                boxShadow: selected?.id === setting.id ? '0 1px 3px rgba(0,40,104,0.1)' : 'none',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>{setting.label}</p>
-                  <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
-                    {(setting.values || []).length} itens
-                  </p>
+          {filteredSettings.map((setting) => {
+            const count = setting.key === 'instruments' ? instrumentTypes.length : (setting.values || []).length
+            return (
+              <button
+                key={setting.id}
+                onClick={() => selectSetting(setting)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  border: selected?.id === setting.id ? '1px solid rgba(0,40,104,0.2)' : '1px solid #e5e7eb',
+                  background: selected?.id === setting.id ? '#e8eef8' : '#ffffff',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: selected?.id === setting.id ? '0 1px 3px rgba(0,40,104,0.1)' : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <p style={{ fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>{setting.label}</p>
+                    <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
+                      {count} itens
+                    </p>
+                  </div>
+                  <List style={{ width: '16px', height: '16px', color: '#9ca3af' }} />
                 </div>
-                <List style={{ width: '16px', height: '16px', color: '#9ca3af' }} />
-              </div>
-            </button>
-          ))}
+              </button>
+            )
+          })}
 
           {settings.length === 0 && (
             <p style={{ fontSize: '14px', color: '#9ca3af', textAlign: 'center', padding: '32px 0' }}>
@@ -250,24 +353,26 @@ export default function SettingsPage() {
                     <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>{selected.description}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => deleteSetting(selected.id)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #fecaca',
-                    background: '#fef2f2',
-                    color: '#dc2626',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 500,
-                  }}
-                >
-                  <Trash2 style={{ width: '14px', height: '14px' }} /> Excluir
-                </button>
+                {!selectedIsInstruments && (
+                  <button
+                    onClick={() => deleteSetting(selected.id)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #fecaca',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Trash2 style={{ width: '14px', height: '14px' }} /> Excluir
+                  </button>
+                )}
               </div>
               <p
                 style={{
@@ -284,110 +389,200 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            <div className="card">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '16px 24px',
-                  borderBottom: '1px solid #f3f4f6',
-                }}
-              >
-                <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
-                  Opções ({editValues.length})
-                </h4>
-                <button
-                  onClick={saveValues}
-                  disabled={saving}
-                  className="btn-primary"
-                  style={{ padding: '6px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'Salvando...' : 'Salvar'}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  padding: '12px 24px',
-                  borderBottom: '1px solid #f3f4f6',
-                  background: '#fafafa',
-                  display: 'flex',
-                  gap: '8px',
-                }}
-              >
-                <input
-                  type="text"
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addItem()
-                    }
-                  }}
-                  placeholder="Digite uma nova opção e pressione Enter..."
-                  className="input-field"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="btn-primary"
-                  style={{ padding: '8px 14px', fontSize: '12px', whiteSpace: 'nowrap' }}
-                >
-                  <Plus style={{ width: '14px', height: '14px' }} />
-                </button>
-              </div>
-
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {editValues.map((value, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: '10px 24px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderBottom: '1px solid #f9fafb',
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#fafafa'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#374151' }}>{value}</span>
+            {selectedIsInstruments ? (
+              <>
+                <div className="card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid #f3f4f6' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
+                      Instrumentos ({instrumentCountForCard})
+                    </h4>
                     <button
-                      onClick={() => removeItem(idx)}
-                      style={{
-                        padding: '4px',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#d1d5db',
-                        transition: 'color 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#dc2626'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = '#d1d5db'
-                      }}
+                      type="button"
+                      onClick={openCreateInstrumentModal}
+                      className="btn-primary"
+                      style={{ padding: '8px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      <X style={{ width: '14px', height: '14px' }} />
+                      <Plus style={{ width: '14px', height: '14px' }} /> Novo instrumento
                     </button>
                   </div>
-                ))}
-                {editValues.length === 0 && (
-                  <p style={{ padding: '32px 24px', textAlign: 'center', fontSize: '14px', color: '#9ca3af' }}>
-                    Nenhuma opção cadastrada. Adicione itens acima.
-                  </p>
-                )}
+
+                  <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                    {instrumentTypes.map((item) => {
+                      const template = instrumentTemplateMap.get(item.template_id)
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            padding: '14px 24px',
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1fr auto',
+                            gap: '12px',
+                            alignItems: 'center',
+                            borderBottom: '1px solid #f8fafc',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '14px', fontWeight: 600, color: '#1f2937' }}>{item.name}</div>
+                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                              {item.description || 'Sem descrição'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '13px', color: '#334155' }}>{template?.name || 'Sem template'}</div>
+                            <div style={{ fontSize: '12px', color: item.is_active ? '#15803d' : '#b45309', marginTop: '4px' }}>
+                              {item.is_active ? 'Ativo' : 'Inativo'}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => editInstrumentType(item)}
+                              style={{
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                color: '#334155',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                              }}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteInstrumentType(item.id)}
+                              style={{
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid #fecaca',
+                                background: '#fef2f2',
+                                color: '#dc2626',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                              }}
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {instrumentTypes.length === 0 && (
+                      <p style={{ padding: '32px 24px', textAlign: 'center', fontSize: '14px', color: '#9ca3af' }}>
+                        Nenhum instrumento cadastrado.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="card">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 24px',
+                    borderBottom: '1px solid #f3f4f6',
+                  }}
+                >
+                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
+                    Opções ({instrumentCountForCard})
+                  </h4>
+                  <button
+                    onClick={saveValues}
+                    disabled={saving}
+                    className="btn-primary"
+                    style={{ padding: '6px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px 24px',
+                    borderBottom: '1px solid #f3f4f6',
+                    background: '#fafafa',
+                    display: 'flex',
+                    gap: '8px',
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addItem()
+                      }
+                    }}
+                    placeholder="Digite uma nova opção e pressione Enter..."
+                    className="input-field"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="btn-primary"
+                    style={{ padding: '8px 14px', fontSize: '12px', whiteSpace: 'nowrap' }}
+                  >
+                    <Plus style={{ width: '14px', height: '14px' }} />
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  {editValues.map((value, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '10px 24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderBottom: '1px solid #f9fafb',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#fafafa'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                      }}
+                    >
+                      <span style={{ fontSize: '14px', color: '#374151' }}>{value}</span>
+                      <button
+                        onClick={() => removeItem(idx)}
+                        style={{
+                          padding: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#d1d5db',
+                          transition: 'color 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#dc2626'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = '#d1d5db'
+                        }}
+                      >
+                        <X style={{ width: '14px', height: '14px' }} />
+                      </button>
+                    </div>
+                  ))}
+                  {editValues.length === 0 && (
+                    <p style={{ padding: '32px 24px', textAlign: 'center', fontSize: '14px', color: '#9ca3af' }}>
+                      Nenhuma opção cadastrada. Adicione itens acima.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
@@ -398,6 +593,130 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {selectedIsInstruments && showInstrumentModal && (
+        <div
+          onClick={closeInstrumentModal}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: isMobile ? '14px' : '24px',
+            zIndex: 1000,
+          }}
+        >
+          <form
+            onSubmit={saveInstrumentType}
+            onClick={(e) => e.stopPropagation()}
+            className="card animate-fade-in"
+            style={{
+              width: '100%',
+              maxWidth: isMobile ? 'calc(100vw - 20px)' : '680px',
+              padding: isMobile ? '16px' : '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+                  {editingInstrumentId ? 'Editar instrumento' : 'Novo instrumento'}
+                </h4>
+                <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                  Defina qual template será usado automaticamente para este instrumento.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInstrumentModal}
+                style={{
+                  padding: '6px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X style={{ width: '14px', height: '14px' }} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Nome do instrumento</label>
+                <input
+                  value={instrumentForm.name}
+                  onChange={(e) => setInstrumentForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="input-field"
+                  required
+                  placeholder="Ex: Micropipeta de Volume Fixo"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Template</label>
+                <select
+                  value={instrumentForm.template_id}
+                  onChange={(e) => setInstrumentForm((prev) => ({ ...prev, template_id: e.target.value }))}
+                  className="input-field"
+                  required
+                >
+                  <option value="">Selecione...</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>Descrição</label>
+                <input
+                  value={instrumentForm.description}
+                  onChange={(e) => setInstrumentForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="input-field"
+                  placeholder="Resumo opcional"
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#374151' }}>
+                <input
+                  type="checkbox"
+                  checked={instrumentForm.is_active}
+                  onChange={(e) => setInstrumentForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                />
+                Instrumento ativo no formulário
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={closeInstrumentModal}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                Cancelar
+              </button>
+              <button type="submit" disabled={savingInstrument} className="btn-primary" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Save style={{ width: '14px', height: '14px' }} /> {savingInstrument ? 'Salvando...' : 'Salvar instrumento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
