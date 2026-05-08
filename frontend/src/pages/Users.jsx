@@ -8,6 +8,7 @@ const roleLabels = {
   super_admin: { label: 'Super Admin', bg: '#e8eef8', color: '#002868' },
   admin: { label: 'Admin', bg: '#dbeafe', color: '#1d4ed8' },
   tecnico: { label: 'Tecnico', bg: '#f3f4f6', color: '#4b5563' },
+  qualidade: { label: 'Qualidade', bg: '#ede9fe', color: '#6d28d9' },
 }
 
 const modalOverlay = {
@@ -38,7 +39,7 @@ export default function UsersPage() {
   const [resetPassword, setResetPassword] = useState('')
 
   const canManageSuperAdmin = currentUser?.role === 'super_admin'
-  const allowedRoleOptions = canManageSuperAdmin ? ['tecnico', 'admin', 'super_admin'] : ['tecnico', 'admin']
+  const allowedRoleOptions = canManageSuperAdmin ? ['tecnico', 'admin', 'qualidade', 'super_admin'] : ['tecnico', 'admin']
 
   useEffect(() => { load() }, [])
 

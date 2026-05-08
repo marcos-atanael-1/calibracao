@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from alembic.config import Config
 from alembic import command
 
@@ -11,6 +12,10 @@ from app.config import settings
 from app.services.instrument_type_service import InstrumentTypeService
 
 logger = logging.getLogger(__name__)
+
+
+# StaticFiles exige que o diretório exista já no import do app.
+os.makedirs(settings.AVATAR_STORAGE_PATH, exist_ok=True)
 
 
 def run_migrations():
@@ -34,6 +39,7 @@ async def lifespan(app: FastAPI):
 
     # Ensure storage directories exist
     os.makedirs(settings.PDF_STORAGE_PATH, exist_ok=True)
+    os.makedirs(settings.AVATAR_STORAGE_PATH, exist_ok=True)
 
     # Run pending migrations
     run_migrations()
@@ -71,8 +77,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount("/storage/avatars", StaticFiles(directory=settings.AVATAR_STORAGE_PATH), name="avatar_storage")
+
 # Include routers
-from app.routers import auth, templates, certificates, queue, users, settings as settings_router, notifications, instrument_types, ai_setup
+from app.routers import auth, templates, certificates, queue, users, settings as settings_router, notifications, instrument_types, ai_setup, quality
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -83,6 +91,7 @@ app.include_router(settings_router.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(instrument_types.router, prefix="/api/v1")
 app.include_router(ai_setup.router, prefix="/api/v1")
+app.include_router(quality.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

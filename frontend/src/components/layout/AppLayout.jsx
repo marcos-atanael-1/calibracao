@@ -12,7 +12,7 @@ export default function AppLayout() {
   const sidebarWidth = collapsed ? 68 : 256
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f9fafb' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f9fafb', overflowX: 'hidden' }}>
       {!isMobile && <Sidebar collapsed={collapsed} />}
 
       {!isMobile && (
@@ -49,9 +49,10 @@ export default function AppLayout() {
       <div
         style={{
           flex: 1,
+          minWidth: 0,
           marginLeft: isMobile ? '0' : `${sidebarWidth}px`,
           transition: 'margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          width: '100%',
+          overflowX: 'hidden',
         }}
       >
         <Header />
@@ -59,6 +60,7 @@ export default function AppLayout() {
           className="animate-fade-in"
           style={{
             padding: isMobile ? '16px 14px 96px' : '32px',
+            overflowX: 'hidden',
           }}
         >
           <Outlet />

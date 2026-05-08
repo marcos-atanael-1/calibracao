@@ -6,12 +6,14 @@ import {
   Users,
   SlidersHorizontal,
   Sparkles,
+  ClipboardCheck,
 } from 'lucide-react'
 import { canAccessModule } from '../../utils/access'
 
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' },
   { to: '/certificates', label: 'Certificados', icon: FileText, moduleKey: 'certificates' },
+  { to: '/quality', label: 'Qualidade', icon: ClipboardCheck, moduleKey: 'quality' },
   { to: '/templates', label: 'Templates', icon: Settings, moduleKey: 'templates' },
   { to: '/queue', label: 'Agente', icon: Bot, moduleKey: 'queue' },
   { to: '/settings', label: 'Configuracoes', icon: SlidersHorizontal, moduleKey: 'settings' },

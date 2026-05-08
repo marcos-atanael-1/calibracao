@@ -572,6 +572,7 @@ class ExcelHandler:
         measurement_fields = mapping.get("measurement_fields") or {}
         numeric_point_fields = {"valor_nominal", "menor_divisao"}
         numeric_measurement_fields = {"massa_aparente", "temperatura_fluido"}
+        criterio_cliente_key = self._normalize_text("Cliente")
 
         for channel_index, channel in enumerate(channels_data):
             if channel_index >= len(sheet_sequence):
@@ -611,6 +612,22 @@ class ExcelHandler:
                     if source_key in numeric_point_fields:
                         value = self._parse_excel_number(value)
                     self._write_cell(sheet_name, cell_ref, value)
+
+                criterio_nbr = self._normalize_text(point.get("criterio_nbr"))
+                if criterio_nbr != criterio_cliente_key:
+                    criterio_cliente_valor = point_fields.get("criterio_cliente_valor") or {}
+                    criterio_cliente_unidade = point_fields.get("criterio_cliente_unidade") or {}
+
+                    if criterio_cliente_valor.get("column"):
+                        self._clear_cell(
+                            sheet_name,
+                            f"{criterio_cliente_valor.get('column')}{block_base_row + int(criterio_cliente_valor.get('row_offset') or 0)}",
+                        )
+                    if criterio_cliente_unidade.get("column"):
+                        self._clear_cell(
+                            sheet_name,
+                            f"{criterio_cliente_unidade.get('column')}{block_base_row + int(criterio_cliente_unidade.get('row_offset') or 0)}",
+                        )
 
                 masses = point.get("massas") or []
                 for measurement_index, measurement in enumerate(

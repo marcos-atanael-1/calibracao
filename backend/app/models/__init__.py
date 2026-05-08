@@ -6,6 +6,7 @@ from app.models.processing_queue import ProcessingQueue
 from app.models.setting import Setting
 from app.models.notification import Notification
 from app.models.ai_setup import AISetup
+from app.models.certificate_timeline_event import CertificateTimelineEvent
 
 __all__ = [
     "User",

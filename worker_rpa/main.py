@@ -13,10 +13,18 @@ Usage:
 import logging
 import os
 import subprocess
+import time
 from datetime import datetime
 
 from api_client import WorkerApiClient
-from config import KILL_EXCEL_ON_START, PDF_OUTPUT_DIR, UPLOAD_PDF_TO_API, WORKER_ID
+from config import (
+    KILL_EXCEL_ON_START,
+    PDF_OUTPUT_DIR,
+    POLL_INTERVAL,
+    RUN_MODE,
+    UPLOAD_PDF_TO_API,
+    WORKER_ID,
+)
 from db_client import DatabaseClient
 from excel_handler import ExcelHandler
 
@@ -112,9 +120,23 @@ def process_item(db: DatabaseClient, handler: ExcelHandler, queue_item: dict):
         )
 
 
+def run_once(db: DatabaseClient, handler: ExcelHandler) -> bool:
+    """Try to process a single queue item.
+
+    Returns True when an item was claimed, False otherwise.
+    """
+    item = db.claim_next_queue_item()
+    if not item:
+        logger.info("Nenhum item pendente na fila")
+        return False
+
+    process_item(db, handler, item)
+    return True
+
+
 def main():
-    """Process a single queue item and exit."""
-    logger.info("Worker RPA iniciado (ID: %s)", WORKER_ID)
+    """Run the worker once or continuously depending on RUN_MODE."""
+    logger.info("Worker RPA iniciado (ID: %s, modo: %s)", WORKER_ID, RUN_MODE)
     os.makedirs(PDF_OUTPUT_DIR, exist_ok=True)
 
     if KILL_EXCEL_ON_START:
@@ -124,12 +146,21 @@ def main():
     handler = ExcelHandler()
 
     try:
-        item = db.claim_next_queue_item()
-        if not item:
-            logger.info("Nenhum item pendente na fila")
+        if RUN_MODE == "continuous":
+            logger.info(
+                "Modo continuo ativo; verificando fila a cada %s segundo(s)",
+                POLL_INTERVAL,
+            )
+            while True:
+                claimed = run_once(db, handler)
+                if not claimed:
+                    time.sleep(max(1, POLL_INTERVAL))
+                    continue
+
+                time.sleep(max(1, POLL_INTERVAL))
             return
 
-        process_item(db, handler, item)
+        run_once(db, handler)
     except KeyboardInterrupt:
         logger.info("Worker encerrado pelo usuario")
     except Exception as exc:

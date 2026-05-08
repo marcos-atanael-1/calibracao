@@ -5,13 +5,22 @@ from fastapi import HTTPException, status
 import math
 import os
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
-from app.models.certificate import Certificate, CertificatePoint, CertificateStatus
+from app.models.certificate import (
+    Certificate,
+    CertificatePoint,
+    CertificateQualityStatus,
+    CertificateStatus,
+)
 from app.models.instrument_type import InstrumentType
 from app.models.processing_queue import ProcessingQueue, QueueStatus
 from app.models.template import Template
 from app.models.user import User, UserRole
+from app.services.notification_service import NotificationService
+from app.services.pdf_review_service import PdfReviewService
+from app.services.quality_service import QualityService
 from app.schemas.certificate import (
     CertificateCreate, CertificateUpdate,
 )
@@ -60,7 +69,7 @@ class CertificateService:
 
     @staticmethod
     def _can_view_all_certificates(user: User) -> bool:
-        return user.role == UserRole.SUPER_ADMIN
+        return user.role in (UserRole.SUPER_ADMIN, UserRole.QUALIDADE)
 
     @staticmethod
     def _apply_visibility_scope(query, user: User):
@@ -77,6 +86,72 @@ class CertificateService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Certificado nao encontrado",
             )
+
+    @staticmethod
+    def _can_edit_certificate(cert: Certificate, user: User) -> bool:
+        if user.role in (UserRole.SUPER_ADMIN, UserRole.QUALIDADE):
+            return cert.status not in (CertificateStatus.PROCESSING,)
+
+        if cert.created_by != user.id:
+            return False
+
+        return cert.status == CertificateStatus.DRAFT or (
+            cert.quality_status == CertificateQualityStatus.WAITING_TECHNICIAN
+            and cert.status in (CertificateStatus.DONE, CertificateStatus.ERROR)
+        )
+
+    @staticmethod
+    def _assert_editable(cert: Certificate, user: User) -> None:
+        if not CertificateService._can_edit_certificate(cert, user):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este certificado nao pode ser editado nesta etapa do fluxo",
+            )
+
+    @staticmethod
+    def _can_delete_certificate(cert: Certificate, user: User) -> bool:
+        if user.role == UserRole.TECNICO:
+            return cert.created_by == user.id and cert.status == CertificateStatus.DRAFT
+
+        return cert.status in (
+            CertificateStatus.DRAFT,
+            CertificateStatus.QUEUED,
+            CertificateStatus.ERROR,
+        )
+
+    @staticmethod
+    def get_preview_pdf_path(cert: Certificate, user: User | None = None) -> str | None:
+        if user and user.role in (UserRole.QUALIDADE, UserRole.SUPER_ADMIN):
+            return cert.official_pdf_path or cert.source_pdf_path or cert.pdf_path
+        if cert.quality_status == CertificateQualityStatus.APPROVED:
+            return cert.official_pdf_path or cert.pdf_path
+        return cert.review_pdf_path or cert.pdf_path
+
+    @staticmethod
+    def assert_official_download_available(cert: Certificate, user: User | None = None) -> None:
+        if user and user.role in (UserRole.QUALIDADE, UserRole.SUPER_ADMIN):
+            return
+        if cert.quality_status != CertificateQualityStatus.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="O download do PDF oficial so fica disponivel apos a aprovacao da Qualidade",
+            )
+
+    @staticmethod
+    def _notify_quality_queue(db: Session, cert: Certificate) -> None:
+        quality_users = (
+            db.query(User)
+            .filter(User.role.in_([UserRole.QUALIDADE, UserRole.SUPER_ADMIN]), User.is_active.is_(True))
+            .all()
+        )
+        NotificationService.create_many(
+            db,
+            user_ids=[user.id for user in quality_users],
+            certificate_id=cert.id,
+            title="Novo certificado para analise",
+            message=f"O certificado {cert.certificate_number} entrou no fluxo da Qualidade.",
+            notification_type="info",
+        )
 
     @staticmethod
     def _resolve_template_id(
@@ -181,7 +256,11 @@ class CertificateService:
     ) -> Certificate:
         cert = (
             db.query(Certificate)
-            .options(joinedload(Certificate.points))
+            .options(
+                joinedload(Certificate.points),
+                joinedload(Certificate.created_by_user),
+                joinedload(Certificate.quality_assigned_user),
+            )
             .filter(Certificate.id == certificate_id)
             .first()
         )
@@ -223,6 +302,7 @@ class CertificateService:
             template_id=resolved_template_id,
             created_by=user_id,
             certificate_number=data.certificate_number,
+            service_order_number=data.service_order_number,
             instrument_tag=data.instrument_tag,
             instrument_description=data.instrument_description,
             manufacturer=data.manufacturer,
@@ -234,6 +314,10 @@ class CertificateService:
             extra_fields=normalized_extra_fields,
             calibration_date=data.calibration_date,
             status=CertificateStatus.QUEUED if should_enqueue else CertificateStatus.DRAFT,
+            quality_status=CertificateQualityStatus.PENDING_REVIEW,
+            submitted_to_quality_at=(
+                datetime.now(timezone.utc) if should_enqueue else None
+            ),
         )
         db.add(cert)
         db.flush()
@@ -253,6 +337,13 @@ class CertificateService:
                 status=QueueStatus.PENDING,
             )
             db.add(queue_item)
+            QualityService.create_timeline_event(
+                db,
+                certificate=cert,
+                actor=None,
+                event_type="submitted_to_quality",
+                message="Certificado criado e enviado para geracao inicial do Agente.",
+            )
 
         db.commit()
         db.refresh(cert)
@@ -263,12 +354,7 @@ class CertificateService:
         db: Session, certificate_id: UUID, data: CertificateUpdate, user: User
     ) -> Certificate:
         cert = CertificateService.get_by_id(db, certificate_id, user)
-
-        if cert.status != CertificateStatus.DRAFT:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Somente certificados em rascunho podem ser editados",
-            )
+        CertificateService._assert_editable(cert, user)
 
         should_enqueue = data.enqueue_for_processing
 
@@ -319,22 +405,36 @@ class CertificateService:
                 )
                 db.add(point)
 
-        if should_enqueue:
-            old_item = (
-                db.query(ProcessingQueue)
-                .filter(ProcessingQueue.certificate_id == certificate_id)
-                .first()
+        if user.role in (UserRole.QUALIDADE, UserRole.SUPER_ADMIN):
+            QualityService.create_timeline_event(
+                db,
+                certificate=cert,
+                actor=user,
+                event_type="quality_edited_form",
+                message="A Qualidade atualizou campos do formulario.",
             )
-            if old_item:
-                db.delete(old_item)
-                db.flush()
+        elif cert.status == CertificateStatus.DRAFT or cert.quality_status == CertificateQualityStatus.WAITING_TECHNICIAN:
+            QualityService.create_timeline_event(
+                db,
+                certificate=cert,
+                actor=user,
+                event_type="technician_edited_form",
+                message="O tecnico atualizou campos do formulario.",
+            )
 
-            queue_item = ProcessingQueue(
-                certificate_id=certificate_id,
-                status=QueueStatus.PENDING,
+        if should_enqueue:
+            message = (
+                "A Qualidade solicitou nova geracao apos ajustar o formulario."
+                if user.role in (UserRole.QUALIDADE, UserRole.SUPER_ADMIN)
+                else "O tecnico concluiu os ajustes e reenviou para nova geracao."
             )
-            db.add(queue_item)
-            cert.status = CertificateStatus.QUEUED
+            db.commit()
+            return QualityService.request_reprocess(
+                db,
+                cert,
+                user,
+                message=message,
+            )
 
         db.commit()
         db.refresh(cert)
@@ -343,16 +443,17 @@ class CertificateService:
     @staticmethod
     def delete(db: Session, certificate_id: UUID, user: User) -> None:
         cert = CertificateService.get_by_id(db, certificate_id, user)
-        if cert.status not in (
-            CertificateStatus.DRAFT,
-            CertificateStatus.QUEUED,
-            CertificateStatus.ERROR,
-        ):
+        if not CertificateService._can_delete_certificate(cert, user):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Somente certificados em rascunho ou com erro podem ser excluídos",
+                detail="Este certificado nao pode ser excluido nesta etapa do fluxo",
             )
-        pdf_path = cert.pdf_path
+        file_paths = [
+            cert.pdf_path,
+            cert.review_pdf_path,
+            cert.official_pdf_path,
+            cert.source_pdf_path,
+        ]
 
         try:
             db.query(ProcessingQueue).filter(
@@ -372,11 +473,12 @@ class CertificateService:
                 detail="Nao foi possivel excluir o certificado porque ele possui dependencias vinculadas",
             ) from exc
 
-        if pdf_path and os.path.exists(pdf_path):
-            try:
-                os.remove(pdf_path)
-            except OSError:
-                pass
+        for file_path in {path for path in file_paths if path}:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
 
     @staticmethod
     def enqueue(db: Session, certificate_id: UUID, user: User) -> ProcessingQueue:
@@ -405,6 +507,15 @@ class CertificateService:
         db.add(queue_item)
 
         cert.status = CertificateStatus.QUEUED
+        cert.quality_status = CertificateQualityStatus.PENDING_REVIEW
+        cert.submitted_to_quality_at = datetime.now(timezone.utc)
+        QualityService.create_timeline_event(
+            db,
+            certificate=cert,
+            actor=user,
+            event_type="submitted_to_quality",
+            message="Certificado enviado para geracao pelo Agente.",
+        )
         db.commit()
         db.refresh(queue_item)
         return queue_item
@@ -434,10 +545,60 @@ class CertificateService:
         if not safe_filename.lower().endswith(".pdf"):
             safe_filename = f"{safe_filename}.pdf"
 
-        target_path = target_dir / safe_filename
-        shutil.copy2(source, target_path)
+        source_filename = f"{Path(safe_filename).stem}__source.pdf"
+        review_filename = f"{Path(safe_filename).stem}__review.pdf"
+        target_source_path = target_dir / source_filename
+        review_target_path = target_dir / review_filename
 
-        cert.pdf_path = str(target_path.resolve())
+        shutil.copy2(source, target_source_path)
+        review_path = PdfReviewService.build_review_copy(
+            str(target_source_path),
+            str(review_target_path),
+        )
+
+        cert.source_pdf_path = str(target_source_path.resolve())
+        cert.review_pdf_path = review_path
+        if cert.quality_status == CertificateQualityStatus.APPROVED:
+            cert.official_pdf_path = cert.source_pdf_path
+            cert.pdf_path = cert.official_pdf_path
+        else:
+            cert.official_pdf_path = None
+            cert.pdf_path = cert.review_pdf_path
+
+        if cert.quality_status == CertificateQualityStatus.REPROCESSING:
+            cert.quality_status = CertificateQualityStatus.AWAITING_FINAL_VALIDATION
+            cert.requires_reprocess = False
+            QualityService.create_timeline_event(
+                db,
+                certificate=cert,
+                actor=None,
+                event_type="reprocess_completed",
+                message="O Agente concluiu a nova geracao do certificado.",
+            )
+        elif cert.quality_status == CertificateQualityStatus.PENDING_REVIEW:
+            QualityService.create_timeline_event(
+                db,
+                certificate=cert,
+                actor=None,
+                event_type="initial_generation_completed",
+                message="O Agente concluiu a geracao inicial para analise da Qualidade.",
+            )
+            CertificateService._notify_quality_queue(db, cert)
+
+        recipients = [cert.created_by]
+        if cert.quality_assigned_to:
+            recipients.append(cert.quality_assigned_to)
+        NotificationService.create_many(
+            db,
+            user_ids=recipients,
+            certificate_id=cert.id,
+            title="PDF em revisao disponivel",
+            message=(
+                f"O certificado {cert.certificate_number} ja possui uma versao em revisao para consulta no sistema."
+            ),
+            notification_type="info",
+        )
+
         cert.status = CertificateStatus.DONE
         db.commit()
         db.refresh(cert)

@@ -18,12 +18,24 @@ class CertificateStatus(str, enum.Enum):
     ERROR = "error"
 
 
+class CertificateQualityStatus(str, enum.Enum):
+    PENDING_REVIEW = "pending_review"
+    IN_REVIEW = "in_review"
+    WAITING_TECHNICIAN = "waiting_technician"
+    READY_FOR_REPROCESS = "ready_for_reprocess"
+    REPROCESSING = "reprocessing"
+    AWAITING_FINAL_VALIDATION = "awaiting_final_validation"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Certificate(Base):
     __tablename__ = "certificates"
     __table_args__ = (
         Index("idx_certificates_status", "status"),
         Index("idx_certificates_template", "template_id"),
         Index("idx_certificates_created_by", "created_by"),
+        Index("idx_certificates_quality_status", "quality_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -37,6 +49,9 @@ class Certificate(Base):
     )
     certificate_number: Mapped[str] = mapped_column(
         String(100), unique=True, nullable=False, index=True
+    )
+    service_order_number: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
     )
     instrument_tag: Mapped[str | None] = mapped_column(
         String(255), nullable=True
@@ -70,6 +85,39 @@ class Certificate(Base):
         default=CertificateStatus.DRAFT,
         nullable=False,
     )
+    quality_status: Mapped[CertificateQualityStatus] = mapped_column(
+        SAEnum(
+            CertificateQualityStatus,
+            name="certificate_quality_status",
+            create_type=True,
+        ),
+        default=CertificateQualityStatus.PENDING_REVIEW,
+        nullable=False,
+    )
+    quality_assigned_to: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    submitted_to_quality_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quality_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quality_rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    requires_reprocess: Mapped[bool] = mapped_column(default=False, nullable=False)
+    review_pdf_path: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    official_pdf_path: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    source_pdf_path: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
     pdf_path: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )
@@ -89,7 +137,14 @@ class Certificate(Base):
 
     # Relationships
     template: Mapped["Template"] = relationship(back_populates="certificates")
-    created_by_user: Mapped["User"] = relationship(back_populates="certificates")
+    created_by_user: Mapped["User"] = relationship(
+        back_populates="certificates",
+        foreign_keys=[created_by],
+    )
+    quality_assigned_user: Mapped["User | None"] = relationship(
+        back_populates="quality_certificates",
+        foreign_keys=[quality_assigned_to],
+    )
     points: Mapped[list["CertificatePoint"]] = relationship(
         back_populates="certificate",
         cascade="all, delete-orphan",
@@ -98,6 +153,11 @@ class Certificate(Base):
     queue_item: Mapped["ProcessingQueue"] = relationship(
         back_populates="certificate",
         uselist=False,
+    )
+    timeline_events: Mapped[list["CertificateTimelineEvent"]] = relationship(
+        back_populates="certificate",
+        cascade="all, delete-orphan",
+        order_by="CertificateTimelineEvent.created_at.desc()",
     )
 
     def __repr__(self) -> str:

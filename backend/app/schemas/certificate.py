@@ -3,7 +3,8 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
-from app.models.certificate import CertificateStatus
+from app.models.certificate import CertificateQualityStatus, CertificateStatus
+from app.schemas.user import UserResponse
 
 
 # --- CertificatePoint schemas ---
@@ -36,6 +37,7 @@ class CertificatePointResponse(BaseModel):
 class CertificateCreate(BaseModel):
     template_id: Optional[UUID] = None
     certificate_number: str
+    service_order_number: Optional[str] = None
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -53,6 +55,7 @@ class CertificateCreate(BaseModel):
 class CertificateUpdate(BaseModel):
     template_id: Optional[UUID] = None
     certificate_number: Optional[str] = None
+    service_order_number: Optional[str] = None
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -72,6 +75,7 @@ class CertificateResponse(BaseModel):
     template_id: UUID
     created_by: UUID
     certificate_number: str
+    service_order_number: Optional[str] = None
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -82,6 +86,17 @@ class CertificateResponse(BaseModel):
     unit: Optional[str] = None
     extra_fields: Optional[dict] = None
     status: CertificateStatus
+    quality_status: CertificateQualityStatus
+    quality_assigned_to: Optional[UUID] = None
+    created_by_user: Optional[UserResponse] = None
+    quality_assigned_user: Optional[UserResponse] = None
+    submitted_to_quality_at: Optional[datetime] = None
+    quality_approved_at: Optional[datetime] = None
+    quality_rejected_at: Optional[datetime] = None
+    requires_reprocess: bool = False
+    review_pdf_path: Optional[str] = None
+    official_pdf_path: Optional[str] = None
+    source_pdf_path: Optional[str] = None
     pdf_path: Optional[str] = None
     ai_summary: Optional[str] = None
     calibration_date: Optional[datetime] = None
@@ -95,11 +110,16 @@ class CertificateResponse(BaseModel):
 class CertificateListResponse(BaseModel):
     id: UUID
     certificate_number: str
+    service_order_number: Optional[str] = None
     instrument_tag: Optional[str] = None
     instrument_description: Optional[str] = None
     extra_fields: Optional[dict] = None
     pdf_path: Optional[str] = None
     status: CertificateStatus
+    quality_status: CertificateQualityStatus
+    requires_reprocess: bool = False
+    review_pdf_path: Optional[str] = None
+    official_pdf_path: Optional[str] = None
     calibration_date: Optional[datetime] = None
     created_at: datetime
 

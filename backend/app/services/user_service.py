@@ -1,13 +1,19 @@
-from uuid import UUID
+import os
+from pathlib import Path
+from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from fastapi import UploadFile
 
+from app.config import settings
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.security import hash_password
 
 
 class UserService:
+    ALLOWED_AVATAR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+    MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
 
     @staticmethod
     def _assert_user_module_access(actor: User) -> None:
@@ -33,10 +39,10 @@ class UserService:
         UserService._assert_user_module_access(actor)
         if actor.role == UserRole.SUPER_ADMIN:
             return
-        if target.role == UserRole.SUPER_ADMIN:
+        if target.role in (UserRole.SUPER_ADMIN, UserRole.QUALIDADE):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin nao pode gerenciar usuarios super admin",
+                detail="Admin nao pode gerenciar usuarios desse nivel de acesso",
             )
 
     @staticmethod
@@ -44,7 +50,7 @@ class UserService:
         UserService._assert_user_module_access(actor)
         query = db.query(User)
         if actor.role == UserRole.ADMIN:
-            query = query.filter(User.role != UserRole.SUPER_ADMIN)
+            query = query.filter(User.role.notin_([UserRole.SUPER_ADMIN, UserRole.QUALIDADE]))
         return query.order_by(User.name).all()
 
     @staticmethod
@@ -141,3 +147,45 @@ class UserService:
         db.commit()
         db.refresh(user)
         return user
+
+    @staticmethod
+    def upload_own_avatar(db: Session, actor: User, file: UploadFile) -> User:
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in UserService.ALLOWED_AVATAR_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de imagem invalido. Use JPG, PNG ou WEBP",
+            )
+
+        content = file.file.read()
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Arquivo de imagem vazio",
+            )
+        if len(content) > UserService.MAX_AVATAR_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A foto deve ter no maximo 5 MB",
+            )
+
+        os.makedirs(settings.AVATAR_STORAGE_PATH, exist_ok=True)
+
+        previous_path = actor.avatar_path
+        filename = f"{actor.id}-{uuid4().hex}{suffix}"
+        absolute_path = Path(settings.AVATAR_STORAGE_PATH) / filename
+        absolute_path.write_bytes(content)
+
+        actor.avatar_path = filename
+        db.commit()
+        db.refresh(actor)
+
+        if previous_path and previous_path != filename:
+            old_file = Path(settings.AVATAR_STORAGE_PATH) / previous_path
+            if old_file.exists():
+                try:
+                    old_file.unlink()
+                except OSError:
+                    pass
+
+        return actor

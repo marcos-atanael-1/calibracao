@@ -165,13 +165,39 @@ def download_pdf(
     current_user: User = Depends(get_current_user),
 ):
     cert = CertificateService.get_by_id(db, certificate_id, current_user)
-    if not cert.pdf_path or not os.path.exists(cert.pdf_path):
+    CertificateService.assert_official_download_available(cert, current_user)
+    if current_user.role in ("qualidade", "super_admin"):
+        pdf_path = cert.official_pdf_path or cert.source_pdf_path or cert.pdf_path
+    else:
+        pdf_path = cert.official_pdf_path or cert.pdf_path
+    if not pdf_path or not os.path.exists(pdf_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PDF nao disponivel",
         )
     return FileResponse(
-        cert.pdf_path,
+        pdf_path,
         media_type="application/pdf",
         filename=f"certificado_{cert.certificate_number}.pdf",
+    )
+
+
+@router.get("/{certificate_id}/pdf/preview")
+def preview_pdf(
+    certificate_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    cert = CertificateService.get_by_id(db, certificate_id, current_user)
+    pdf_path = CertificateService.get_preview_pdf_path(cert, current_user)
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF de visualizacao nao disponivel",
+        )
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"certificado_{cert.certificate_number}.pdf",
+        headers={"Content-Disposition": "inline"},
     )

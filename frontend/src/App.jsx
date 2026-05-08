@@ -8,6 +8,7 @@ import Certificates from './pages/Certificates'
 import CertificateForm from './pages/CertificateForm'
 import Templates from './pages/Templates'
 import Queue from './pages/Queue'
+import QualityPage from './pages/Quality'
 import NotificationsPage from './pages/Notifications'
 import UsersPage from './pages/Users'
 import SettingsPage from './pages/Settings'
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route path="certificates/:id/edit" element={<ModuleRoute moduleKey="certificates"><CertificateForm /></ModuleRoute>} />
         <Route path="templates" element={<ModuleRoute moduleKey="templates"><Templates /></ModuleRoute>} />
         <Route path="queue" element={<ModuleRoute moduleKey="queue"><Queue /></ModuleRoute>} />
+        <Route path="quality" element={<ModuleRoute moduleKey="quality"><QualityPage /></ModuleRoute>} />
         <Route path="notifications" element={<ModuleRoute moduleKey="notifications"><NotificationsPage /></ModuleRoute>} />
         <Route path="users" element={<ModuleRoute moduleKey="users"><UsersPage /></ModuleRoute>} />
         <Route path="settings" element={<ModuleRoute moduleKey="settings"><SettingsPage /></ModuleRoute>} />

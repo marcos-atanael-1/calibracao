@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     # PDF Storage
     PDF_STORAGE_PATH: str = "./storage/pdfs"
+    AVATAR_STORAGE_PATH: str = "./storage/avatars"
     WORKER_UPLOAD_TOKEN: str = ""
 
     # OpenAI

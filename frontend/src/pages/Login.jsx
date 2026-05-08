@@ -25,9 +25,8 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        {/* Logo */}
         <div className="login-logo">
-          <img src="/logo-elus.png" alt="Elus Instrumentação" className="login-logo-img" />
+          <img src="/logo-login-elus.jpeg" alt="Grupo Elus" className="login-logo-img" />
         </div>
 
         <p className="login-welcome">Bem-vindo de volta</p>
@@ -53,7 +52,14 @@ export default function Login() {
           <div className="login-field">
             <div className="login-field-header">
               <label htmlFor="login-password">Senha</label>
-              <a href="#" className="login-forgot" onClick={e => { e.preventDefault(); alert('Solicite a redefinição ao administrador.') }}>
+              <a
+                href="#"
+                className="login-forgot"
+                onClick={(e) => {
+                  e.preventDefault()
+                  alert('Solicite a redefinicao ao administrador.')
+                }}
+              >
                 Esqueci minha senha
               </a>
             </div>
@@ -102,7 +108,7 @@ export default function Login() {
       </div>
 
       <p className="login-footer">
-        &copy; {new Date().getFullYear()} Elus Instrumentação. Todos os direitos reservados.
+        &copy; {new Date().getFullYear()} Elus Instrumentacao. Todos os direitos reservados.
       </p>
 
       <style>{`
@@ -141,7 +147,8 @@ export default function Login() {
         }
 
         .login-logo-img {
-          height: 100px;
+          height: 78px;
+          max-width: 100%;
           width: auto;
           object-fit: contain;
         }
@@ -228,7 +235,6 @@ export default function Login() {
           box-shadow: 0 0 0 3px rgba(0, 40, 104, 0.08);
         }
 
-        /* Remember checkbox */
         .login-remember {
           display: flex;
           align-items: center;
@@ -248,7 +254,6 @@ export default function Login() {
           cursor: pointer;
         }
 
-        /* Password wrapper */
         .login-password-wrapper {
           position: relative;
         }
@@ -328,7 +333,7 @@ export default function Login() {
 
         @media (max-width: 520px) {
           .login-card { padding: 32px 24px 28px; }
-          .login-logo-img { height: 72px; }
+          .login-logo-img { height: 64px; }
         }
       `}</style>
     </div>

@@ -25,6 +25,12 @@ class DatabaseClient:
         "done": "DONE",
         "error": "ERROR",
     }
+    QUALITY_STATUS = {
+        "ready_for_reprocess": "READY_FOR_REPROCESS",
+        "reprocessing": "REPROCESSING",
+        "awaiting_final_validation": "AWAITING_FINAL_VALIDATION",
+        "pending_review": "PENDING_REVIEW",
+    }
 
     def __init__(self):
         if not DATABASE_URL:
@@ -93,6 +99,24 @@ class DatabaseClient:
                     "certificate_processing_status": self.CERTIFICATE_STATUS["processing"],
                 },
             ).mappings().first()
+            if row:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE certificates
+                        SET quality_status = CASE
+                            WHEN quality_status = :ready_for_reprocess THEN :reprocessing
+                            ELSE quality_status
+                        END
+                        WHERE id = :certificate_id
+                        """
+                    ),
+                    {
+                        "certificate_id": row["certificate_id"],
+                        "ready_for_reprocess": self.QUALITY_STATUS["ready_for_reprocess"],
+                        "reprocessing": self.QUALITY_STATUS["reprocessing"],
+                    },
+                )
             return dict(row) if row else None
 
     def get_certificate(self, certificate_id):
@@ -103,6 +127,7 @@ class DatabaseClient:
                 c.template_id,
                 c.created_by,
                 c.certificate_number,
+                c.service_order_number,
                 c.instrument_tag,
                 c.instrument_description,
                 c.manufacturer,
@@ -113,7 +138,11 @@ class DatabaseClient:
                 c.unit,
                 c.extra_fields,
                 c.status,
+                c.quality_status,
                 c.pdf_path,
+                c.review_pdf_path,
+                c.official_pdf_path,
+                c.source_pdf_path,
                 c.ai_summary,
                 c.calibration_date,
                 c.created_at,

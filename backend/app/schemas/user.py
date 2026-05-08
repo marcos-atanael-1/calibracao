@@ -44,6 +44,7 @@ class UserResponse(BaseModel):
     id: UUID
     name: str
     email: str
+    avatar_url: Optional[str] = None
     role: UserRole
     is_active: bool
     must_change_password: bool = False

@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
@@ -89,4 +89,17 @@ def reset_password(
     return APIResponse(
         data=UserResponse.model_validate(user),
         message="Senha redefinida. Usuário deverá trocar no próximo login.",
+    )
+
+
+@router.post("/me/avatar", response_model=APIResponse)
+def upload_my_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user = UserService.upload_own_avatar(db, current_user, file)
+    return APIResponse(
+        data=UserResponse.model_validate(user),
+        message="Foto de perfil atualizada com sucesso",
     )

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import useIsMobile from '../hooks/useIsMobile'
 
 const normalizeSettingToken = (value) => (
@@ -59,6 +60,8 @@ const buildFormOptions = (settingsList) => {
     thermometers: resolve('thermometers', 'termometros', 'termometro'),
     point_scopes: resolve('point_scopes', 'escopos_do_ponto', 'escopo_do_ponto'),
     apparent_mass_units: resolve('apparent_mass_units', 'unidades_massa_aparente', 'massa_aparente_unidade'),
+    point_criteria_nbr: resolve('point_criteria_nbr', 'criterios_nbr_do_ponto', 'criterio_nbr'),
+    point_criteria_client_units: resolve('point_criteria_client_units', 'unidades_criterio_cliente', 'criterio_cliente_unidade'),
   }
 }
 
@@ -81,6 +84,9 @@ function createEmptyPoint(pointNumber) {
     termometro: '',
     escopo: '',
     massa_aparente_unidade: 'g',
+    criterio_nbr: '',
+    criterio_cliente_valor: '',
+    criterio_cliente_unidade: '',
     massas: Array.from({ length: 10 }, (_, index) => ({
       medicao: index + 1,
       massa_aparente: '',
@@ -119,6 +125,14 @@ function generateExampleCertificateNumber() {
   const stamp = `${now.getMonth() + 1}`.padStart(2, '0') + `${now.getDate()}`.padStart(2, '0')
   const randomBlock = Math.floor(1000 + Math.random() * 9000)
   return `${stamp}${randomBlock}`
+}
+
+function getTodayIsoDate() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = `${now.getMonth() + 1}`.padStart(2, '0')
+  const day = `${now.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function normalizeMeasurementUnitValue(value) {
@@ -168,17 +182,20 @@ function normalizeMeasurementUnitValueSafe(value) {
 
 export default function CertificateForm() {
   const isMobile = useIsMobile()
+  const { user } = useAuth()
   const nav = useNavigate()
   const { id } = useParams()
   const isEditing = Boolean(id)
   const [instrumentTypes, setInstrumentTypes] = useState([])
   const [savingMode, setSavingMode] = useState('')
   const [loadingDraft, setLoadingDraft] = useState(isEditing)
+  const [certificateMeta, setCertificateMeta] = useState(null)
   const [options, setOptions] = useState({})
   const [activeChannelTab, setActiveChannelTab] = useState(0)
 
   const [form, setForm] = useState({
     template_id: '',
+    service_order_number: '',
     certificate_number: '',
     empresa: '',
     tipo_calibracao: '',
@@ -205,9 +222,9 @@ export default function CertificateForm() {
     metodo: '',
     qtd_canais: '1',
     pontos_por_canal: '1',
-    data_calibracao: '',
-    data_emissao: '',
-    proxima_calibracao: '',
+    data_calibracao: getTodayIsoDate(),
+    data_emissao: getTodayIsoDate(),
+    proxima_calibracao: getTodayIsoDate(),
     tecnico: '',
     padrao_temperatura: '',
     temperatura_inicial: '',
@@ -242,10 +259,12 @@ export default function CertificateForm() {
     api.get(`/certificates/${id}`).then((response) => {
       const certificate = response.data.data
       const extra = certificate.extra_fields || {}
+      setCertificateMeta(certificate)
 
       setForm((prev) => ({
         ...prev,
         template_id: certificate.template_id || '',
+        service_order_number: certificate.service_order_number || '',
         certificate_number: certificate.certificate_number || '',
         empresa: extra.empresa || '',
         tipo_calibracao: extra.tipo_calibracao || '',
@@ -272,9 +291,9 @@ export default function CertificateForm() {
         metodo: extra.metodo || '',
         qtd_canais: extra.qtd_canais || '1',
         pontos_por_canal: extra.pontos_por_canal || '1',
-        data_calibracao: extra.data_calibracao || (certificate.calibration_date ? String(certificate.calibration_date).slice(0, 10) : ''),
-        data_emissao: extra.data_emissao || '',
-        proxima_calibracao: extra.proxima_calibracao || '',
+        data_calibracao: extra.data_calibracao || (certificate.calibration_date ? String(certificate.calibration_date).slice(0, 10) : getTodayIsoDate()),
+        data_emissao: extra.data_emissao || getTodayIsoDate(),
+        proxima_calibracao: extra.proxima_calibracao || getTodayIsoDate(),
         tecnico: extra.tecnico || '',
         padrao_temperatura: extra.padrao_temperatura || '',
         temperatura_inicial: extra.temperatura_inicial || '',
@@ -340,6 +359,16 @@ export default function CertificateForm() {
   }, [form.qtd_canais, form.pontos_por_canal])
 
   useEffect(() => {
+    setChannels((prev) => prev.map((channel) => ({
+      ...channel,
+      points: (channel.points || []).map((point) => ({
+        ...point,
+        escopo: point.escopo || form.escopo || '',
+      })),
+    })))
+  }, [form.escopo])
+
+  useEffect(() => {
     const normalizedInstrument = normalizeSettingToken(form.instrumento)
     if (!normalizedInstrument) return
 
@@ -369,6 +398,24 @@ export default function CertificateForm() {
         points: channel.points.map((point, pointIndex) => (
           pointIndex === pointIdx ? { ...point, [key]: value } : point
         )),
+      }
+    }))
+  }
+
+  const updatePointCriteria = (channelIdx, pointIdx, value) => {
+    setChannels((prev) => prev.map((channel, index) => {
+      if (index !== channelIdx) return channel
+      return {
+        ...channel,
+        points: channel.points.map((point, pointIndex) => {
+          if (pointIndex !== pointIdx) return point
+          return {
+            ...point,
+            criterio_nbr: value,
+            criterio_cliente_valor: value === 'Cliente' ? point.criterio_cliente_valor : '',
+            criterio_cliente_unidade: value === 'Cliente' ? point.criterio_cliente_unidade : '',
+          }
+        }),
       }
     }))
   }
@@ -447,11 +494,12 @@ export default function CertificateForm() {
     if (e?.preventDefault) e.preventDefault()
     setSavingMode(enqueueForProcessing ? 'final' : 'draft')
     try {
-      const { template_id, certificate_number, ...extra } = form
+      const { template_id, certificate_number, service_order_number, ...extra } = form
       const { rangeMin, rangeMax, unit } = buildCertificatePayload()
       const payload = {
         template_id,
         certificate_number,
+        service_order_number,
         instrument_tag: form.identificacao,
         instrument_description: form.instrumento,
         manufacturer: form.fabricante,
@@ -476,7 +524,7 @@ export default function CertificateForm() {
         await api.post('/certificates', payload)
       }
 
-      nav('/certificates')
+      nav(user?.role === 'qualidade' ? '/quality' : '/certificates')
     } catch (err) {
       alert(err.response?.data?.detail || 'Erro ao salvar')
     } finally {
@@ -485,6 +533,14 @@ export default function CertificateForm() {
   }
 
   const labelStyle = { display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px' }
+  const isQualityEditor = user?.role === 'qualidade' || user?.role === 'super_admin'
+  const isTechnicianReturnFlow = certificateMeta?.quality_status === 'waiting_technician' && user?.role === 'tecnico'
+  const draftButtonLabel = isEditing
+    ? (isQualityEditor ? 'Salvar alteracoes' : (isTechnicianReturnFlow ? 'Salvar ajustes' : 'Salvar rascunho'))
+    : 'Salvar rascunho'
+  const submitButtonLabel = isEditing
+    ? (isQualityEditor ? 'Salvar e reprocessar' : (isTechnicianReturnFlow ? 'Responder e reenviar ao Agente' : 'Salvar e enviar ao Agente'))
+    : 'Salvar e enviar ao Agente'
   const sectionTitle = (title) => (
     <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
       {title}
@@ -538,6 +594,21 @@ export default function CertificateForm() {
 
   const pointScopes = (options.point_scopes || []).length > 0 ? options.point_scopes : defaultPointScopes
   const apparentMassUnits = (options.apparent_mass_units || []).length > 0 ? options.apparent_mass_units : defaultApparentMassUnits
+  const pointCriteriaOptions = options.point_criteria_nbr || []
+  const pointCriteriaClientUnits = options.point_criteria_client_units || ['%', 'Unidade do ponto']
+  const resolvedPointCriteriaClientUnits = useMemo(() => {
+    const resolved = []
+    for (const option of pointCriteriaClientUnits) {
+      const token = normalizeSettingToken(option)
+      if (['unidade_do_ponto', 'unidade_ponto', 'g12'].includes(token)) {
+        if (form.unidade_medicao) resolved.push(form.unidade_medicao)
+        continue
+      }
+      resolved.push(option)
+    }
+
+    return Array.from(new Set(resolved.filter(Boolean)))
+  }, [form.unidade_medicao, pointCriteriaClientUnits])
   const activeChannel = channels[activeChannelTab]
 
   const fillExampleData = () => {
@@ -547,6 +618,7 @@ export default function CertificateForm() {
 
     setForm((prev) => ({
       ...prev,
+      service_order_number: 'OS-12345',
       certificate_number: generateExampleCertificateNumber(),
       empresa: findOption(options.companies, 'Elus', 'Elus'),
       tipo_calibracao: findOption(options.calibration_types, 'Acreditado Interno', 'Acreditado Interno'),
@@ -573,9 +645,9 @@ export default function CertificateForm() {
       metodo: findOption(options.methods, 'Normal', 'Normal'),
       qtd_canais: '1',
       pontos_por_canal: '3',
-      data_calibracao: '2026-04-27',
-      data_emissao: '2026-04-27',
-      proxima_calibracao: '2026-04-30',
+      data_calibracao: getTodayIsoDate(),
+      data_emissao: getTodayIsoDate(),
+      proxima_calibracao: getTodayIsoDate(),
       tecnico: findOption(options.technicians, 'Carlos Augusto Benevides'),
       padrao_temperatura: findOption(options.temperature_standards, 'E.TH.LQ-001 (OUT)', 'E.TH.LQ-001 (OUT)'),
       temperatura_inicial: '21',
@@ -615,6 +687,9 @@ export default function CertificateForm() {
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
             massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
+            criterio_nbr: findOption(pointCriteriaOptions, 'n/a', 'n/a'),
+            criterio_cliente_valor: '',
+            criterio_cliente_unidade: '',
             massas: makeMassRows('0.01'),
           },
           {
@@ -626,6 +701,9 @@ export default function CertificateForm() {
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
             massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
+            criterio_nbr: findOption(pointCriteriaOptions, 'n/a', 'n/a'),
+            criterio_cliente_valor: '',
+            criterio_cliente_unidade: '',
             massas: makeMassRows('0.05'),
           },
           {
@@ -637,6 +715,9 @@ export default function CertificateForm() {
             termometro: findOption(options.thermometers, 'E.TH.LQ-009', 'E.TH.LQ-009'),
             escopo: findOption(pointScopes, 'Microvolume', 'Microvolume'),
             massa_aparente_unidade: findOption(apparentMassUnits, 'g', 'g'),
+            criterio_nbr: findOption(pointCriteriaOptions, 'n/a', 'n/a'),
+            criterio_cliente_valor: '',
+            criterio_cliente_unidade: '',
             massas: makeMassRows('0.1'),
           },
         ],
@@ -682,6 +763,7 @@ export default function CertificateForm() {
         <div className="card" style={{ padding: '24px' }}>
           {sectionTitle('Dados do Certificado')}
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+            {renderInput('Ordem de Servico', 'service_order_number', 'text', false, 'OS-12345')}
             {renderInput('Nº do Certificado', 'certificate_number', 'text', true, '05041234')}
             {renderSmartField('Empresa', 'empresa', 'companies')}
             {renderSelect('Tipo da Calibracao', 'tipo_calibracao', 'calibration_types')}
@@ -913,7 +995,7 @@ export default function CertificateForm() {
                     </div>
                     <div>
                       <label style={{ ...labelStyle, fontSize: '12px' }}>Escopo</label>
-                      <select value={point.escopo} onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'escopo', e.target.value)} className="input-field">
+                      <select value={point.escopo || ''} onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'escopo', e.target.value)} className="input-field">
                         <option value="">Selecione...</option>
                         {pointScopes.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                       </select>
@@ -924,6 +1006,47 @@ export default function CertificateForm() {
                         {apparentMassUnits.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                       </select>
                     </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ ...labelStyle, fontSize: '12px' }}>Criterio NBR</label>
+                      <select
+                        value={point.criterio_nbr || ''}
+                        onChange={(e) => updatePointCriteria(activeChannelTab, pointIdx, e.target.value)}
+                        className="input-field"
+                      >
+                        <option value="">Selecione...</option>
+                        {pointCriteriaOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    </div>
+
+                    {point.criterio_nbr === 'Cliente' && (
+                      <>
+                        <div>
+                          <label style={{ ...labelStyle, fontSize: '12px' }}>Criterio cliente</label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={point.criterio_cliente_valor || ''}
+                            onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'criterio_cliente_valor', e.target.value)}
+                            className="input-field"
+                            placeholder="Ex: 0"
+                          />
+                        </div>
+                        <div>
+                          <label style={{ ...labelStyle, fontSize: '12px' }}>Unidade criterio cliente</label>
+                          <select
+                            value={point.criterio_cliente_unidade || ''}
+                            onChange={(e) => updatePoint(activeChannelTab, pointIdx, 'criterio_cliente_unidade', e.target.value)}
+                            className="input-field"
+                          >
+                            <option value="">Selecione...</option>
+                            {resolvedPointCriteriaClientUnits.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div>
@@ -1029,10 +1152,10 @@ export default function CertificateForm() {
             }}
           >
             <Save style={{ width: '16px', height: '16px' }} />
-            {savingMode === 'draft' ? 'Salvando rascunho...' : 'Salvar rascunho'}
+            {savingMode === 'draft' ? 'Salvando...' : draftButtonLabel}
           </button>
           <button type="submit" disabled={savingMode !== ''} className="btn-primary" style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px', opacity: savingMode !== '' ? 0.7 : 1 }}>
-            <Save style={{ width: '16px', height: '16px' }} /> {savingMode === 'final' ? 'Enviando ao Agente...' : (isEditing ? 'Salvar e enviar ao Agente' : 'Salvar e enviar ao Agente')}
+            <Save style={{ width: '16px', height: '16px' }} /> {savingMode === 'final' ? 'Enviando ao Agente...' : submitButtonLabel}
           </button>
         </div>
       </form>

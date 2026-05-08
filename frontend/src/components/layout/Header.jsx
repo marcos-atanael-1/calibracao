@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Bell, LogOut, KeyRound, Check, Loader2, X } from 'lucide-react'
+import { Bell, LogOut, KeyRound, Check, Loader2, X, ImagePlus } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/client'
 import useIsMobile from '../../hooks/useIsMobile'
@@ -12,6 +12,7 @@ const pageTitles = {
   '/notifications': 'Notificacoes',
   '/templates': 'Templates',
   '/queue': 'Agente de Processamento',
+  '/quality': 'Qualidade',
   '/users': 'Usuários',
   '/settings': 'Configurações',
   '/ai-setup': 'IA Setup',
@@ -33,6 +34,7 @@ function formatNotificationTime(value) {
 
 export default function Header() {
   const isMobile = useIsMobile()
+  const avatarInputRef = useRef(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const dropdownRef = useRef(null)
@@ -49,10 +51,13 @@ export default function Header() {
   const [pwError, setPwError] = useState('')
   const [pwSuccess, setPwSuccess] = useState(false)
   const [pwLoading, setPwLoading] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
 
   const location = useLocation()
   const nav = useNavigate()
   const { user, logout, updateUser } = useAuth()
+
+  const avatarUrl = user?.avatar_url || ''
 
   const loadNotifications = async () => {
     if (!user) return
@@ -108,7 +113,7 @@ export default function Header() {
 
     setNotificationsOpen(false)
     if (notification.certificate_id) {
-      nav('/certificates')
+      nav(user?.role === 'qualidade' ? '/quality' : '/certificates')
     }
   }
 
@@ -151,6 +156,32 @@ export default function Header() {
       setPwError(err.response?.data?.detail || 'Erro ao alterar senha')
     } finally {
       setPwLoading(false)
+    }
+  }
+
+  const handleAvatarPick = () => {
+    avatarInputRef.current?.click()
+  }
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append('file', file)
+    setAvatarUploading(true)
+    try {
+      const { data } = await api.post('/users/me/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      if (data?.data) {
+        updateUser(data.data)
+      }
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Erro ao atualizar a foto de perfil')
+    } finally {
+      setAvatarUploading(false)
+      event.target.value = ''
     }
   }
 
@@ -366,6 +397,13 @@ export default function Header() {
         <div style={{ width: '1px', height: '24px', background: '#e5e7eb' }} />
 
         <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            style={{ display: 'none' }}
+            onChange={handleAvatarChange}
+          />
           <div
             onClick={() => {
               setDropdownOpen(!dropdownOpen)
@@ -398,11 +436,20 @@ export default function Header() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
+                overflow: 'hidden',
               }}
             >
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#002868' }}>
-                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-              </span>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'Usuario'}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#002868' }}>
+                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                </span>
+              )}
             </div>
             {!isMobile && <div style={{ display: 'flex', flexDirection: 'column' }}>
               <p style={{ fontSize: '13px', fontWeight: 500, color: '#1f2937', lineHeight: 1 }}>
@@ -432,6 +479,38 @@ export default function Header() {
                 zIndex: 50,
               }}
             >
+              <button
+                onClick={() => {
+                  setDropdownOpen(false)
+                  handleAvatarPick()
+                }}
+                disabled={avatarUploading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  width: '100%',
+                  textAlign: 'left',
+                  cursor: avatarUploading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  color: '#374151',
+                  borderBottom: '1px solid #f3f4f6',
+                  transition: 'background 0.15s',
+                  opacity: avatarUploading ? 0.65 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!avatarUploading) e.currentTarget.style.background = '#f9fafb'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <ImagePlus style={{ width: '16px', height: '16px', color: '#6b7280' }} />
+                {avatarUploading ? 'Enviando foto...' : 'Alterar foto'}
+              </button>
               <button
                 onClick={() => {
                   setDropdownOpen(false)

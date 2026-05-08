@@ -56,7 +56,10 @@
         "escopo": { "column": "E", "row_offset": 2 },
         "balanca_utilizada": { "column": "K", "row_offset": 0 },
         "termometro": { "column": "K", "row_offset": 1 },
-        "massa_aparente_unidade": { "column": "H", "row_offset": 5 }
+        "massa_aparente_unidade": { "column": "H", "row_offset": 5 },
+        "criterio_nbr": { "column": "Q", "row_offset": 5 },
+        "criterio_cliente_valor": { "column": "R", "row_offset": 10 },
+        "criterio_cliente_unidade": { "column": "T", "row_offset": 10 }
       },
       "measurement_fields": {
         "massa_aparente": { "column": "I" },
